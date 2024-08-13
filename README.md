@@ -1,84 +1,69 @@
-# FermWatch - 8266
+# FermWatch32 - ESP32 CYD
 Monitoring fermentation with Brewfather®, BrewPiLess and iSpindel or "No phone No worries!"
 
-![bpl screen IMG_1322ssm](https://user-images.githubusercontent.com/38124525/164382814-4af067e7-b47f-446a-a56a-18721918490c.JPG) ![isp screen IMG_1320sm](https://user-images.githubusercontent.com/38124525/164383131-8af7bd72-f092-484e-ae2c-08549dafd988.JPG)
+- Have you struggled to see the BPL SSD1306 OLED screen?
+- Don’t have your phone/tablet handy?
+- Forgot your glasses?
+- Or just want to see where your latest brew is up to?
 
-Have you struggled to see the BPL SSD1306 OLED screen?
-Don’t have your phone handy?
-Forgot your glasses?
-Just want to see where your latest brew is up to?
-
-The video Tutorial has step by step instructions and describes how to make a FermWatch with a D1 Mini and a 2.8" TFT ILI9341 to monitor your fermentation – in the shed, beside the bed, wherever your local network extends!
-
+The video Tutorial has step-by-step instructions and describes how to make a FermWatch32 with a 2.8" CYD to monitor your fermentation – in the shed, beside the bed, wherever your local network extends!
   
-Link to video:   https://youtu.be/AYtplzlXTfo 
+Link to video:    
 
-**Important** I am a brewer and author, I write books on recreating historic beers - **NOT a PROGRAMMER** - as will be obvious from inspection of the code.
+**Important** I am a brewer and author, I write books on brewing traditional beers - **NOT a PROGRAMMER** - as will be obvious from inspection of the code. https://www.lulu.com/spotlight/prsymons 
 # Project
-The FermWatch project was very much inspired by ZeSlammy’s iSpindHub project where the iSpindel readout was displayed on a small tft screen. https://github.com/ZeSlammy/iSpindHub
-Initially, I just wanted a bigger screen for my BrewPiLess, but interfacing the ILI9341 proved to be too hard for me. Then I developed FermWatch as a standalone unit  to show BrewPiLess data and iSpindel data from Brewfather plus some derived functions. 
-# Limitations
-FermWatch works with **ONE** batch in Brewfather, with its status set to **Fermenting**
-If you attach your iSpindel to BrewPiless then forward to Brewfather, rather than forwarding to Brewfather direct you might get interesting results!
-# Software issues and change requests
-Please do not expect any form of support. I am a brewer not a coder/programmer! It has taken me 4 months to reach this stage where I think that it is working and stable enough to release. It works with the hardware, as described. 
-# Main Prerequisites
-- D1 Mini 8266 with 2.8" TFT ILI9341 320 * 240 (lots of these out there just don't buy a shield!) NB This project does not work with an ESP32!
-- BrewPiLess System [BPL] Software v4.1r4 by Vitotai  https://github.com/vitotai/BrewPiLess
-- iSpindel [iSp] Software v7.1.0 https://github.com/universam1/iSpindel    Cherry Philip board v4.0 Build your own https://youtu.be/4HYzm0psaNw
-- Brewfather® v2.8.1 [BF]  https://brewfather.app/ Premium Version - so yes you have to pay an annual subscription but it is worth every cent.
-# System Overview
-![FW Overview 2022-04-21_16-09-55sm](https://user-images.githubusercontent.com/38124525/164385886-e3cf825e-5781-480c-b466-e32460241675.png)
+This project takes the FermWatch 8266 version and boldly migrates it to ESP32 with an ILI9341 TFT then to a CYD - ESP32 Arduino LVGL WIFI & Bluetooth Development Board 2.8 " 240*320 Smart Display Screen 2.8inch LCD TFT Module With Touch WROOM  AITEXM ROBOT Official Store. This is a 2 USB Variant.
 
-Key parts
-- iSp set to send data to BF
-- FermWatch acts as a MQTT Broker to BPL - and pushes data every 75 - 115 secs
-- Getting the current data from the BF API is a 2 step process the first request is a single shot to get the fermenting batch id, recipe name, measured OG and estimated FG
-- The second request uses the batch id to get the batch iSpindel last readings  set for a 3 minute cycle, primarily to rotate the display  given the BF update cycle is 15 minutes
-- the display screens then alternate between BPL and iSp
-- Displays derived % ABV using the UK Tax Office adjustment factors cl 30.2 and 30.3 https://www.gov.uk/government/publications/excise-notice-226-beer-duty/excise-notice-226-beer-duty--2#calculation-strength Note that Brewfather appears to use an adjustment of 131.25
-# Options
-- Select Plato - default SG
+# Limitations
+Not many - see the video
+
+# Software issues and change requests
+Please do not expect any form of support. I am a brewer and author, not a coder/programmer! I have used ChatGPT for some of the fancy bits of code and don't fully understand how it works. I have done a fair bit of testing but if you find something please let me know and I will investigate – no promises! 
+ 
+# Main Prerequisites
+- [CYD] ESP32 Arduino LVGL WIFI & Bluetooth Development Board 2.8 " 240*320 Smart Display Screen 2.8inch LCD TFT Module With Touch 
+  WROOM  AITEXM ROBOT Official Store (no affiliation just the one I found)
+- BrewPiLess System [BPL] Software v4.3.1 by Vitotai  https://github.com/vitotai/BrewPiLess
+- iSpindel [iSp] Software v7.1.0 https://github.com/universam1/iSpindel    Cherry Philip board v4.0 Build your own 
+  https://youtu.be/4HYzm0psaNw or
+- GravityMon [GM] https://mp-se.github.io/gravitymon/index.html 
+- Brewfather® v2.10.9 [BF]  https://brewfather.app/ Premium Version - so yes you have to pay an annual subscription but it is worth every cent.
+# System Overview
+![FW32_System_2024-08-13_14-04-31](https://github.com/user-attachments/assets/b8448ba3-4f71-44dd-aded-40f8fd23b5a9)
+
+# Configuration Options
+- BF Not Selected - can be used just with BPL without BF
+- Select 2FV? to monitor 2 BF Fermenting Batches
+- Select GM to use with GravityMon - might be useful for calibration?
+- Select wm_WIPE clears the WiFiManger settings
+- Select Temp_Corr iSpindel SG 20°C approximate temperature correction - default none. 	An experimental function that modifies 
+  the displayed Present 	Gravity, Apparent Attenuation and % ABV values
 - Select Fahrenheit  - default Celsius
-- Select iSpindel SG 20°C approximate temperature correction - default none. 	An experimental function that modifies the displayed Present 	Gravity, Apparent Attenuation and % ABV values
+- Select Plato - default SG
+- Select Receiver to well receive forwarded BPL data from another FW32
+- Select BF_Poll to change the BF update interval to 10 minutes from the default 15 minutes
 
 # Links
 - Base64 Encode  https://www.base64encode.org/ 
 - Postman   https://www.postman.com/ 
-- Get Fermenting batch from Brewfather  https://api.brewfather.app/v2/batches/?include=measuredOg,recipe.fgEstimated&status=Fermenting
-- Get the Latest readings for batch https://api.brewfather.app/v2/batches/batch_id/readings/last  NB Change batch_id to suit your results
 - Flasher https://github.com/marcelstoer/nodemcu-pyflasher/releases
+- MQTT Explorer https://mqtt-explorer.com/
+- Espressif Flash Download Tool https://www.espressif.com/en/support/download/other-tools
 
 # Acknowledgements
-This project would not have been possible without using libraries from Bodmer - TFT_eSPI screen, martin-ger - MQTT Broker, B Blanchon - ArduinoJson, tzapu - WiFiManger, NTPClient and the MultiMap for interpolation and others who are referenced in the code.
+This project would not have been possible without using libraries from Bodmer - TFT_eSPI screen, hsaturn - TinyMqtt Broker, B Blanchon - ArduinoJson, tzapu - WiFiManger, NTPClient and the MultiMap for interpolation and others who are referenced in the code. Brian Lough https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display
 
-# FermWatch Versions
+# FermWatch32 Versions
 
-1.2  Maintenance update
-     Added hostname, as having to read the chipid or remembering the IP was a pain, fixed pressure display from BPL now Bpressure 
-     Minor display formatting issues corrected
-     Display longer brew names up to 36 characters long without wordwrapping messing up the screen display
-     Changed bpl to bpl42 all - Lower case you will need to set in BrewPiLess Mqtt.
-     Change Brewfather from v1 to v2 per API changes Commented out reset settings every time! line 972
-     
-1.1 First Release
-
-► I have achieved what I set out to do for the project, some compromises were made along the way, notably failing to get the AA fonts to work but no worries.
+1.2.3  First Release
 
 # Future improvements 
-- Monitor amount of change of iSp angle/SG to assess the rate of fermentation
-- could be to use the touch screen of the ILI9341 
-  - to select screen display  BPL, iSpindel
-  - change settings in lieu of the BPL rotary switch?
-  - be able to change FermWatch config settings (F/C, SG/P, Temp Correction) on the fly  rather than restarting 
-- use the on board ILI9341 SD card facility to hold fonts etc
-- Migrate to ESP32 to get more memory for screen processing and use TrueType fonts for cleaner screen presentation
-- A separate BPL only FermWatch
+- Monitor the amount of change of iSp angle/SG to assess the rate of fermentation
   
-# My YouTube channel, Buy my Books, GitHub and website:  
+# My YouTube channel, Buy My Books, GitHub and website:  
 \-------------------------------------------------------------------------------------------------  
 - https://m.youtube.com/channel/UCRhjjWS5IFHzldBhO2kyVkw/featured   Tritun Books Channel
 - https://www.lulu.com/spotlight/prsymons  Books available Print on demand from Lulu
-- https://github.com/Hwerow/FermWatch  This 
+- https://github.com/Hwerow/FermWatch32  This 
 - https://prstemp.wixsite.com/tritun-books   Website  
 \-------------------------------------------------------------------------------------------------
