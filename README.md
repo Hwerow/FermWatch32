@@ -1,4 +1,4 @@
-# FermWatch32 - ESP32 CYD
+# FermWatch32 - ESP32 CYD2USB
 Monitoring fermentation with Brewfather®, BrewPiLess and iSpindel or "No phone No worries!"
 
 - Have you struggled to see the BPL SSD1306 OLED screen?
