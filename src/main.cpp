@@ -1,1760 +1,1614 @@
-/*
- FermWatch - a colourful display for BrewPiLess and Brewfather or "No phone no worries!"
- Version
- 1.0.3 try to fix change to set false F and P on reset try R Bacon timing in loop works
- 1.0.4 still F & P on reset now has force config every time! and now using LittleFS
- 1.0.5 optional temperature correction for iSpindel Temperature gravity and thus calulated ABV
- 1.0.6 apparent attenuation calc and AEST offset 36000 secs general graphics tidy up app att can use tmep corrected present gravity
- 1.0.7 moved OG and EstFG as fixed data and swopped with App Att  Added warning for deserialization errors brew and batch - Auth entry errors. Perhaps add warning re time to manual spund - problem how to acknowledge perhaps touch in future?
- 1.0.8 Interpolation for temp correction implemented. Note online formulae do not seem to calculate  to match Wheeler's table or scientific calcs.
- 1.0.9 Try different font for  startup  AA font trialled for Main screen and brew details looks good but causes instability in the 8266. Occasionally double restarts
- 1.1 First Version  -  sanitised and removed AA fonts
+/* 
+                       FermWatch32 cyd2usb 
 
- 1.2 Added hostname, as having to read the chipid or remembering the IP was a pain, fixed pressure display from BPL now Bpressure, minor display formatting issues corrected
-     Display longer brew names up to 36 characters long without wordwrapping messing up the screen display
-     Changed bpl to bpl42 all - to allow possible remote working from an esp32 FW MQTT publishing bpl42 data
-     Change Brewfather from v1 to v2 per API changes Commented out reset settings every time! line 972
-        
+in setup
+  first use CYD
+launch FW title screen
+  calibrate touch?
+      yes 
+launch calibrate
+  do the calibration 
+  save values in preferences   
+  subsequent use 
+use saved calibration details 
 
-FermWatch uses data pushed from BPL every 75 - 115 seconds and data pulled from the Brewfather API every 180 seconds to display batch fementation status.
-No need for phones browsers etc an always on indication of how the brew is fermenting.
+launch config menu screen shows parameters currently set
+Change parameters?
+    yes 
+select by touching button set = highlighted in yellow; unset grey
+once chosen touch OK to save and DONE to continue
+saves parameters in preferences 
+use parameters all bool in config.h and in the main code
 
- Using a D1 Mini with 2.8" TFT ILI9341 320 * 240 (in landscape mode), with touchscreen, and the Bodmer TFT_eSPI library. Plus the uMQTTBroker for Arduino (C++-style) on an ESP8266 (D1Mini clone)
- The aim is to use the MQTT facility of BrewPiLess (BPL), sending a JSON message,  to display the status information locally to the unit, instead of using the small SSD1306 OLED display.
- This approach should enable this program to be independent of and compatible with future updates of BPL.
- Note BPL set to push an update every 75 -115 seconds
+Config screen Options
+BF unset = BPL only
+2FV unset single batch 2FV set = 2 batches needs BF set
+wm_WIPE set wipes all the settings as a one off to enter new Auth_B etc
+Temp_Corr set experimental temperature correction unset default
+Fahr set = Fahrenheit unset default = Celcius
+Plato set = Plato unset default = SG
+Receiver set = Receiver unset well - not Receiver
+BF_Poll set = 3 minute update interval unset 10 minute update
+Must select OK to save the config to preferences ***** Important
+DONE to continue
 
- Also to report iSpindel gravity and temperature, via the Brewfather API
- The aim here is to display the in progress fermentation details from Brewfather. This should get the batch name, Est FG and OG and thus permit a calculation of ABV.
- BF updates the information from the iSpindel at 15 minute intervals so can set the scan delay to say 10 minutes (3 for testing).
+then in setup
+run the wm parameter settings input this seems the optimal way to input the Auth_B batch details and save them
+Auth_B based on BF = brewF set true run the wm parameter settings to get the batch details
+Similarly enter the UTC_offset wherever you are 
+Forwarding IP Address Forward Target_IP Broker_IP default is 192.168.0.100
 
- Stage 2 could be to use the touch screen of the ILI9341
- * to select screen display Summary, BPL, iSpindel
- * change settings in lieu of the BPL rotary switch?
- * be able to change FermWatch config settings (F/C, SG/P, Temp Correction) rather than restarting
- * use the on board ILI9341 SD card facility to hold fonts etc
- * Migrate to ESP32 to get more memory for screen processing and use  AA fonts for cleaner screen presentation
- * report iSpindel gravity and temperature, possibly via iSpindHub
+save these to wm preferences 
+use wm data
 
- * The uMQTTBroker program WORKS with 8266 ONLY!  and defines a custom broker class with callbacks, starts it, subscribes locally to anything, and publishs a topic every second.
- * Try to connect from a remote client and publish something - the console will show this as well.
+else skip BF and use bpl as the default sets up mqtt etc
+positive action required to select BF and other settings
 
+v 001
+problem with gamma and screen inversion - seems to affect photos not much difference if text
+I get normal colors by commenting out these two lines from ILI9341_Init.h:
+writecommand(0xE0); //Set Gamma
+writecommand(0XE1); //Set Gamma
+but I commented out anyway!
+created Button.h for the button stuff, setup options based on saved preferneces for FW
 
- Hardware connections
+v 002
+played about with the LED
+created touchCali.h for the calibration stuff and config.h for the parameter stuff
 
-TFT 9431 pins    | D1 Mini NodeMCU pins  |   wire colour  |
-LCD VCC            Vin / 3V3             |   Red
-LCD GND            GND                   |   Orange
-LCD CS             D8  .                 |   Yellow
-LCD RESET          D4  .                 |   Green
-LCD DC             D3  .                 |   Blue
-LCD SDI/MOSI       D7  .                 |   Purple
-LCD SCK            D5  .                 |   Grey
-LCD LED            3V3                   |   White   Jumper
-LCD SDO/MISO       D6                    |   Black   (or leave disconnected if not reading TFT)
-LCD T_CLK                                   Jumper to D5
-T_CS               D2                    |           Chip select pin (T_CS) of touch screen
-T_DIN                                    |           Jumper to D7
-T_DO                                     |           Jumper to D6
-T_IRQ                                    |  no connection?  */
+v 003 clean version most comments removed from main.cpp 
+  incorporated most of setup and wm from FW to test whole front end using prefs for Auth_B
+  did not include the MQTT stuff as bombed out
+  changed the wm flow to be per dronebot eg
+  created getBFData.h  get the batch details  and get the batch updates 
+  loop modified to complete the post setup actions for BF and DST 
+ 
+v 004
+  split out  screen 1 and 2 
+  checked formatting Fahr and Plato
+  added the bpl mqtt stuff but not the gm mqtt as likely gm would come via BF OR BPL
+  check all the menu settings work Fahr, Plato done
+  Can't solve the memory leak so when the heap gets to 70,000 a reset is initiated
+  The heap reset  bypasses the config screen and auto operation of wm a mostly seamless operation
+  A 'normal" power type reset launches the menu 
+  If wm WIPE is selected it wipes the wifimanager settings and allows rentry of wifi details, Auth_B, etc 
+  
+  check stability
+v 005  
+  upgrade name to FW32
+  fixed iSp_id to display made a String
 
-// for wm
-// removed for now #define FORMAT_SPIFFS_IF_FAILED false //try this seemed to get rid of the load error   - we cannot mount the SPIFFS disk, shall we format one? Not sure why I put this in
+New FW32 
+v 0.1 
+  Multiple Fermentation Vessels/multiple iSpindel/GravityMonitors
+v 0.2
+refined screen2 and 3 duplication of functions
+moved App Att and abv for screen2 and 3 and pressure to screen1
+v0.3
+When BPL only ie brewF == false 
+  - uses the  parts of screen 2 to display iSp
+  - App Att and ABV not displayed or sent
+v0.4
+tested forwarding different IP addresses set from Config Menu
+v0.5
+Temp_Corr button used for Receive Temp_Corr logic retained but not used or tested
+added option to subscribe to bplfw from a different FW32 Rec Receive Turns off bplfw from the receiving FW32
+v0.6
+Included the changes from modifying when set as receiver
+UTC offset and Target Broker IP address now entered via wifimanager and saved in preferences
+Added GM and Temp_Corr to menu
+V0.7
+one BPL and two fermenters - added sorting to GET batch lowest BatchNO being FV1 hopefully
+Set up GravityMon MQTT - perhaps useful for calibration? Needs to be setup in gravmon https://github.com/mp-se/gravitymon/tree/v1.3.0 
+See video for more detailed explanation 
+V0.8
+Fixed Temp_Corr for the various options
+V0.9
+cleaned up code
+turned Debug off
 
-#define ESP_DRD_USE_LittleFS true // this line needs to go before drd.h      Need to be defined before library import
-#define FORMAT_LittleFS_IF_FAILED false
+v1.0
+First Stable version
+
+v1.1 
+Update platform to 6.2.3
+Added  angle trend indicator still doesn't work properly
+v1.2
+screen2  Made calculate the angle trend a function - so that it can be called from getBFDataupdates and the 10 min default timing 
+added an alternative abv calculator - will stick with the UK Excise one for now
+Updated to receive wireless hydrometer name from BPL note "hydrometerRssi" instead of ispindelRssi
+
+v1.2.1 Changed to hard coded AEST this version set for 192.168.0.92 
+
+v1.2.2 Angle trend not working properly. Display disabled in screen2.h
+Was using ILI9341_2 Driver which worked. Changed to ST7789 Driver for a much crisper display
+Colour coded dispaly to match iSpindel colour
+
+v1.2.3 Auto Detect current timzone on startup/reboot using ip-api. Used sprite for clock to remove flickering.
+
+First Release
+
+ */
+
 
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h> // for BF API
-#include "uMQTTBroker.h"
+#include <SPI.h>
+#include <XPT2046_Touchscreen.h>
+#include <TFT_eSPI.h>
+#include "Math.h"
+#include <HTTPClient.h> // auto detect TZ and Daylight  Saving Time Offset
+
+// code split out hopefully for some clarity?
+#include "Button.h" // Include the Button header with all the button logic
+#include "touchCali.h"  // include the touch calibration
+#include "config.h"     // has the bools
+#include "getBFData.h"  // 2 functions get Batch ID etc and Batch Update
+#include <LittleFS.h>
+#include "screen1.h"
+#include "screen2.h"
+#include "screen3.h"
+#include <TinyMqtt.h>
+#include <WiFi.h>              //for ESP32
+#include <WiFiClientSecure.h> // for BF API moved to getBFData
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-#include "NotoSansBold15.h"
-#include "NotoSansBold36.h"
-#include "NotoSansMonoSCB20.h"
 
-// Anti Aliassed fonts only used in a limited way
-//  Do not include "" around the array name!
-#define AA_FONT_SMALL NotoSansBold15  // 1.2
-//  #define AA_FONT_LARGE NotoSansBold36
-//  #define AA_FONT_MONO  NotoSansMonoSCB20 // NotoSansMono-SemiCondensedBold 20pt
+// IP API endpoint for setting the UTC Offset
+const char* ipApiEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode,city,timezone,offset,query";
 
-#include <TFT_eSPI.h>
-#include <SPI.h>
-#include "font.h" // Orb 18
-#include "MultiMap.h"
-// note free fonts need to be after TFT_eSPI.h
-#include "Orbitron_Medium_20.h"
-#include "NotoSans_Medium20pt7b.h"
-#include "Open_Sans_Bold_18.h" // http://oleddisplay.squix.ch/#/home
-#include "Open_Sans_Bold_16.h"
+/* #include "NotoSans_Bold.h" is now in getBFData.h
+#include "OpenFontRender.h"
+#define TTF_FONT NotoSans_Bold // The font is referenced with the array name look in the file!!
+OpenFontRender ofr; */
 
-#include <FS.h>
-#include <LITTLEFS.h> // added
+#include <WiFiManager.h>
+//#include <ArduinoJson.h>
+// ------------------------------------------------------------------------------------
+
+const char version[] = "1.2.3";
+
+// ------------------------------------------------------------------------------------
+
+// Define MQTT broker details
+// https://github.com/hsaturn/TinyMqtt simple broker with wifi
+// NB delete tinystring.cpp from TinyConsole to compile in Visual Studio Code
+
+const char* Target_Broker = ""; //Tiny MQTT doesn't like the use of IPAddress
+#define PORT 1883
+
+MqttBroker broker(PORT);
+MqttClient mqttbpl(&broker);
+MqttClient mqttbplfw(&broker); //rec
+MqttClient mqttgm(&broker); // 
+// Initialize the MQTT client for the sender
+MqttClient mqtt_sender(&broker);
+
+// MQTT Topics set to
+const char* topic = "bpl"; // latest version ESP32 with modified version of 4.3p  BrewPiLess was const char topic[] =
+const char* topic2 = "bplfw"; // Forwarding - to differentiate from that data coming from bpl
+const char* topic3 = "gm";   // GravityMonitor software on iSpindel hardware 
+
+
+// unsigned long lastTopicTime = 0;
+const unsigned long topicTimeout = 120000; // Timeout in milliseconds (120 seconds)
+bool bplSource; // Flag to control the display state for bpl was false
+const char *Source ="";//rec
+
+// cyd LED pins
+#define CYD_LED_RED 4
+#define CYD_LED_GREEN 16
+#define CYD_LED_BLUE 17
 
 // custom hostname  The valid letters for hostname are a-z 0-9 and -  works
-const char *hostname = "8266fermwatch";
+const char *hostname = "FW32";
 
-//
-// only for ESP32
-// #include <SPIFFS.h>
-// #include <WiFi.h>
-// ---------------------------------------------------------------------------------------------------------
-// debugger https://github.com/RalphBacon/224-Superior-Serial.print-statements/tree/main/Simple_Example
-#define DEBUG 1
+// preferences used in preference to EEPROM which didn't work on ESP32 and used instead of the wm config json file
+#include <Preferences.h>
 
-#if DEBUG == 1
-#define debug(x) Serial.print(x)
-#define debugln(x) Serial.println(x)
-#define debugf(x) Serial.printf(x) // throws errors not used
-#else
-#define debug(x)
-#define debugln(x)
-#define debugf(x)
-#endif
+/* this now in touchCali // Touch Screen pins cyd2usb touch uses HSPI pins not VSPI
+#define XPT2046_IRQ 36
+#define XPT2046_MOSI 32
+#define XPT2046_MISO 39
+#define XPT2046_CLK 25
+#define XPT2046_CS 33
 
-// #define LED_BUILTIN 2 use with 8266
+SPIClass mySpi = SPIClass(VSPI);  // this was HSPI which was wrong
+XPT2046_Touchscreen ts(XPT2046_CS, XPT2046_IRQ); */
 
-// ----------------------------WiFiManager and DRD stuff
-#include <WiFiManager.h>
-#include <ESP_DoubleResetDetector.h> // Can be installed from the library manager (Search for "ESP_DoubleResetDetector") //https://github.com/khoih-prog/ESP_DoubleResetDetector
-// DRD double reset detect https://github.com/khoih-prog/ESP_DoubleResetDetector/blob/master/examples/minimal/minimal.ino
-// Note DRD not used - just single press reset
+// TFT_eSPI tft = TFT_eSPI(); // is now in Button.h
 
-#include <ArduinoJson.h>
-// Number of seconds after reset during which a subseqent reset will be considered a double reset. Was 10 changed to 5 needs to be a deliberate gap between presses
-#define DRD_TIMEOUT 5
+// chatGPT calibrate only once and save to Preferences. Check if values exist during setup if not calibrated 
+// i.e. click on red cross hairs
+// float xCalM = 0.0, xCalC = 0.0, yCalM = 0.0, yCalC = 0.0;
 
-// RTC Memory Address for the DoubleResetDetector to use
-#define DRD_ADDRESS 0
+// these are used in touchCali and Button.h  set to extern
+float xCalM = 0.0; 
+float xCalC = 0.0; 
+float yCalM = 0.0; 
+float yCalC = 0.0;
 
-// #define LED_OFF     HIGH  // was for ESP32 const int PIN_LED = 2; // blue light on if connected
-// pinMode(LED_BUILTIN, OUTPUT); // use with Led builtin 8266
+// touch screen debounce
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 100; // Debounce time in milliseconds
+bool buttonState = false; // Initial state of the button
+bool lastButtonState = false; // Previous state of the button
 
-// JSON configuration file
-#define JSON_CONFIG_FILE "/sample_config.json"
+// MQTT Forwarding set by default bplfw
+char Target_IP [16] = ("192.168.0.100"); // 192.168.xxx.xxx 15 plus 1 = 16   IP 99 is FWO, 100 is FW32
 
-DoubleResetDetector *drd;
+int Sender_IP = 92; // needs to match the FW32 IP (WiFi.localIP() // automate?
+ 
+long BF_updateInt = 180000;   // default value 3 mins
 
-// flag for saving data
-bool shouldSaveConfig = false;
+// automatic UTC_offset from detected IP address 
+int UTC_offset = 36000; // default to suit how timeClient works for AEDT 39600 for AEST 36000
 
-// -----------------------Default configuration values   this section is the WiFi Manager Parameter stuff------
-// WiFi Manager Parameter - Global variables changed to 124 +1 125
-char Auth_B[125] = ("Enter YOUR Brewfather Authorisation Basic - 124 characters Base64 encoded"); // length should be max size 124 + 1 =125
+int getUTCOffset() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(ipApiEndpoint);
+    int httpResponseCode = http.GET();
 
-int UTC_offset = 36000;    // AEDT need to adjust for daylight saving time 39600 for AEST = 36000
-int BF_updateInt = 180000; // milli seconds set for 3 minutes  150 requests/h = 2.5 per minute set minimum time 30 seconds ie 30000
-bool Plato = false;        // false to leave checkbox unchecked
-bool Fahr = false;         // and leave the defaults as C and SG
-bool Temp_Corr = false;    // default no correction for temperature
+    if (httpResponseCode > 0) {
+      String payload = http.getString();
+      Serial.println("HTTP Response code: " + String(httpResponseCode)); // 200 is good
+      Serial.println("Payload: " + payload);
 
-// Define WiFiManager Object // from robot
+      // Parse JSON response
+      DynamicJsonDocument doc(1024);
+      DeserializationError error = deserializeJson(doc, payload);
+
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        http.end();
+        return false;
+        //return -1;
+      }
+
+      // Extract the UTC offset in seconds
+      UTC_offset = doc["offset"].as<int>(); // offset  seconds
+      Serial.print("Extracted UTC offset  "); Serial.println(UTC_offset);
+      http.end();
+      return true;
+    } else {
+      Serial.print("Error on HTTP request: ");
+      Serial.println(httpResponseCode);
+      http.end();
+      return false;
+      //return -1;
+    }
+  } else {
+    Serial.println("Wi-Fi not connected");
+    return false;
+    // return -1;
+  }
+}
+
+
+// bool DONE button used to move to the title screen sequence in config.h
+bool configCompleted = false;
+
+/* flags to set config variable that can be toggled in config.h
+default states all bool all can be used in FW set as global
+*/
+
+// FW32
+// JSON configuration file now changed to preferences 
+
+// ------Default configuration values   this section is the WiFi Manager Parameter stuff------
+// WiFi Manager Parameter - Global variables defaults
+// length should be max size + 1 =126 if left blank BF not used - detect blank
+char Auth_B[126] = (""); // testing for BF not connected and release
+ 
+// flag for saving wm data
+bool shouldSaveConfig = false; // false per 1.2 using https://dronebotworkshop.com/wifimanager/
+bool forceConfig = false; // made global was in setup
+ 
+// setup wifi and get BF API Auth_B
 WiFiManager wm;
 
-// bool writeConfigFile()
-void saveConfigFile()
-{
-  debugln(F("Saving config to json"));
-  StaticJsonDocument<640> json; // made 640
-  json["Auth_B"] = Auth_B;
-  json["UTC_offset"] = UTC_offset;
-  json["BF_updateInt"] = BF_updateInt;
-  json["Plato"] = Plato; //
-  json["Fahr"] = Fahr;   //
-  json["Temp_Corr"] = Temp_Corr;
-
-  // Open config file
-  File configFile = LittleFS.open(JSON_CONFIG_FILE, "w");
-  if (!configFile)
-  {
-    debugln("failed to open config file for writing");
-  }
-
-  serializeJsonPretty(json, Serial);
-  if (serializeJson(json, configFile) == 0)
-  {
-    debugln(F("Failed to write to file"));
-  }
-  configFile.close();
+void saveAuthToPreferences() {
+  Preferences preferences;
+  preferences.begin("auth", false); // Open preferences with the namespace "auth"
+  preferences.putString("Auth_B", Auth_B); // Save Auth_B to preferences with the key "Auth_B"
+  preferences.end(); // Close preferences
+}
+void saveUTCToPreferences() {
+  Preferences preferences;
+  preferences.begin("UTC", false); 
+  preferences.putLong("UTC_offset", UTC_offset); // Save UTC_offset to preferences with the key "UTC"
+  preferences.end(); // Close preferences
 }
 
-bool loadConfigFile()
-// Load existing configuration file
-{
-  // clean FS, for testing
-  //  LittleFS.format();
-
-  // read configuration from FS json
-  debugln("");
-  debugln("mounting File System ...");
-
-  LittleFS.begin(); // for 8266
-                    // SPIFFS.begin();
-                    //
-  Serial.println("Mounted file system");
-  if (LittleFS.exists(JSON_CONFIG_FILE))
-  {
-    // file exists, reading and loading
-    Serial.println("Reading config file");
-    File configFile = LittleFS.open(JSON_CONFIG_FILE, "r");
-    if (configFile)
-    {
-      Serial.println("Opened config file");
-      StaticJsonDocument<640> json;
-      DeserializationError error = deserializeJson(json, configFile);
-      serializeJsonPretty(json, Serial);
-      if (!error)
-      {
-        Serial.println("\nparsed json");
-
-        strcpy(Auth_B, json["Auth_B"]);
-        UTC_offset = json["UTC_offset"].as<int>();
-        BF_updateInt = json["BF_updateInt"].as<int>();
-        Plato = json["Plato"].as<bool>();
-        Fahr = json["Fahr"].as<bool>();
-        Temp_Corr = json["Temp_Corr"].as<bool>();
-        Serial.println("Deserialized true false of Fahr ");
-        Serial.println(Fahr);
-        return true;
-      }
-      else
-      {
-        Serial.println("failed to load json config");
-      }
-    }
-  }
-  // }
-  // }
-  else
-  {
-    // Error mounting file system
-    Serial.println("Failed to mount FS");
-  }
-  // end read
-  return false;
+void saveTargetIPToPreferences() {
+  Preferences preferences;
+  preferences.begin("Target_IP", false); // Open preferences with the namespace "auth"
+  preferences.putString("Target_IP", Target_IP); // Save Target_IP to preferences with the key "Target_IP"
+  preferences.end(); // Close preferences
 }
-// callback notifying us of the need to save config in the right place?
+
+bool retrieveAuthFromPreferences() {
+  Preferences preferences;
+  preferences.begin("auth", true); // Open preferences in read-only mode
+  String retrievedAuth = preferences.getString("Auth_B", "");
+  preferences.end();
+  retrievedAuth.toCharArray(Auth_B, sizeof(Auth_B));
+  return true;
+}
+bool retrieveUTCFromPreferences() {
+  Preferences preferences;
+  preferences.begin("UTC", true); // Open preferences in read-only mode
+  long retrievedUTC = preferences.getLong("UTC_offset", 39600); // 39600 is the default value
+  preferences.end();
+  UTC_offset = retrievedUTC;
+  
+  // Debug statements to check the retrieved value
+  Serial.print("Retrieved UTC from preferences: ");
+  Serial.println(retrievedUTC);
+  if (retrievedUTC != 39600) {
+    UTC_offset = retrievedUTC;
+    return true;
+  } else {
+    return false;
+  }
+  //return true;
+}
+
+bool retrieveTargetIPFromPreferences() {
+  Preferences preferences;
+  preferences.begin("Target_IP", true); // Open preferences in read-only mode
+  String retrievedAuth = preferences.getString("Target_IP", "");
+  preferences.end();
+  retrievedAuth.toCharArray(Target_IP, sizeof(Target_IP));
+  Target_Broker = Target_IP;
+  return true;
+}
+
 void saveConfigCallback()
 // Callback notifying us of the need to save configuration
 {
-  debugln("Yes, save config");
+  Serial.println("Should save config");
   shouldSaveConfig = true;
 }
-
-// This gets called when the config mode is launched, might be useful to update a display with this info.
+ 
 void configModeCallback(WiFiManager *myWiFiManager)
+// Called when config mode launched
 {
-  debugln("Entered Conf Mode");
-
-  debug("Config SSID: ");
-  debugln(myWiFiManager->getConfigPortalSSID());
-
-  debug("Config IP Address: ");
-  debugln(WiFi.softAPIP());
+  Serial.println("Entered Configuration Mode");
+ 
+  Serial.print("Config SSID: ");
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+ 
+  Serial.print("Config IP Address: ");
+  Serial.println(WiFi.softAPIP());
 }
+//Global variable from Prefs to use in main
+// bool Temp_Corr = false; // extern bool in config.h 
+// bool BF_Poll;
+bool wmWIPE = false; // ditto
 
+// Get NTP Time and set the offset to UTC
+// AEDT 39600 UTC+11:00  need to set offset for daylight saving time DST
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", UTC_offset);
+
+// not tested 3 minutes is the default
+// This function is to set the interval to send a GET request to BF  3 or 10 minutes
+void setBF_PollInterval() {
+  Serial.println("");
+  if (BF_Poll) {
+    Serial.printf("BF_Poll is true 3 minute interval\n");
+    BF_updateInt = 180000; // 3 minutes
+    // Serial.print("BF_Poll = "); Serial.println(BF_updateInt);
+  } else {
+    Serial.printf("BF_Poll is false 10 minute interval\n");
+    BF_updateInt = 600000;  // 10 minutes
+    
+  }
+  // Serial.print("BF_Poll = "); Serial.println(BF_updateInt);
+ } 
+
+// void setBF_PollInterval();
+
+unsigned long currentTime; // for BF Update in loop 
+
+// for the clock display
+TFT_eSprite sprite = TFT_eSprite(&tft);
+
+// Probably working  - variables from touch 
 // ------------------------------------------------------------------------------------------------------------
-/* Timing for LOOP functions NTP and accessing BF and screen rotation  BPL set for 75 secs
+/* Timing for LOOP functions NTP and accessing BF and screen refresh for  rotation  BPL set for 90 secs data may or may not have been updated yet from GM BPL BF
   "independant" timed events  https://www.programmingelectronics.com/arduino-millis-multiple-things/   */
-const long eventTime_1_NTP = 1000;    // in ms 1 sec
-const long eventTime_2_BF = 180000;   // in ms  1 min 1000 * 60  = 60000 180 = 3 mins note max 150 requests per hour changed to 40000 for testing
-const long eventTime_3_Screen = 5000; // 5 secs future?
+const long eventTime_1_NTP = 1000;     // in ms 1 sec  DONE
+const long eventTime_2_BF = BF_updateInt;
+// const long eventTime_2_BF = 180000;     // in ms  1 min 1000 * 60  = 60000 180 = 3 mins note max 150 requests per hour changed to 60000 for testing
+const long eventTime_3_GM = 10000; // gravmon update 10 secs for calibration not currently set up 
+const long eventTime_4_mqtt = 40000;   // for mqtt sending 40 secs
 /* When did they start the race? */
-unsigned long previousTime_1 = 0;
-unsigned long previousTime_2 = 0;
-unsigned long previousTime_3 = 0; // spare
+unsigned long previousTime_1 = 0; // NTP
+unsigned long previousTime_2 = 0; // BF
+unsigned long previousTime_3 = 0; // gravmon
+unsigned long previousTime_4 = 0; // mqtt sending
 
-void updateNTP();
+// BF HTTPS requests First set up authorisation - login details to BF API
+// WiFiClientSecure client; // secure moved to getBFData
 
-// ref sprintf https://www.programmingelectronics.com/sprintf-arduino/ although Espressif has this builtin puts in flash not RAM
+// global variables for forwarding bpl data in the loop
+byte state; 
+float beerTemp;
+float beerSet;
+float fridgeTemp;
+float fridgeSet;
+float roomTemp;
+byte mode;
+// float pressure; // this from BF doesn't work
+float gravity;
+float plato;
+String Hydro;
 
-// -----------------------------------------------------------------------------------------------------------------------
-// BF HTTPS requests First set up authorisation
-// login details to BF API
+// GLOBAL Variables to save BF batch id and OG
 
-WiFiClientSecure client; // secure
-
-// ---------------------------------------------------------------------------------------------------------------------------------
-// Global Variables to save batch id and OG
-String version = "1.2";
-// const char* batch_id;  // go back to const char
-// 1.2a
-char batch_id[31]; // this works 29 char +1 [30] batch id now 30 22 Mar         30 in June 23 so set for 31
-String brew;  // now string  1.2  be able to count characters
+// Batch 1
+char batch_id[33]; // this works 29 char +1 [30] batch id now 31 -- 8 Dec 22 for 31 char used later in adding to strings made 33 just in case
+String brew;       // changed to string to be able to count characters for display purposes
+String Brewname;   // rename Batch
 float SGogy;       // try float measured OG from BF
-float FGEst;       // estimated final gravity from BF
+float FGEst;       // estimated final gravity from BF recipe actually FG
 float abv;         // before adjustment is Init_abv local
-int ABV_adjG;      // gravity adjustment for ABV calc
-float adjABV;      // for printing
+int ABV_adjG;      // gravity adjustment for ABV calc display and sending
+float adjABV;      // for sending and display
 float SG_adjT;     // gravity adjustment for temperature correction
+int batch1FV;      // FV number for Batch 1
+
+// Batch 2
+char batch_id2[33]; // this works 29 char +1 [30] batch id now 31 -- 8 Dec 22 for 31 char used later in adding to strings made 33 just in case
+String brew2;       // changed to string to be able to count characters for display purposes
+String Brewname2;   // rename Batch
+float SGogy2;       // try float measured OG from BF
+float FGEst2;       // estimated final gravity from BF recipe actually FG
+float abv2;         // before adjustment is Init_abv local
+int ABV_adjG2;      // gravity adjustment for ABV calc display and sending
+float adjABV2;      // for sending and display
+float SG_adjT2;     // gravity adjustment for temperature correction
+int batch2FV;       // FV number for Batch 2
+
+// GLOBAL variables for BPL not sure about these - only one would be coming from BPL
+float Bpressure;
+// float Bpressure2; // 
+
+// last seen BPL for stale indications for BPL or more likely a wireless connection failure
+// Start the timer for topic stale
+
+unsigned long lastBPLMessageTime = 0;
+const unsigned long BPLStaleTime = 120000; // 120 seconds in milliseconds to suit BPL when set for 90 secs
+bool BPLstale = false;
+
+// last seen BF // not done not needed?
+unsigned long currentTime1;
+unsigned long lastSeen1;
+bool BFstale = false;
+
+// iSpindel Global
+String iSp_id ="";
+String iSp_id2 ="";
+
+// GM Global
+String GMname;
+String GMID;
+
+// BPL global
+// float iSp_sg;
+
+// const char *iSp_id ="test iSp";
+// printf("iSp_id value in main: %s\n", iSp_id);
 
 // iSpindel GLOBAL Variables ex Brewfather to save  angle, id, manual/BPL entry pressure, temp, sg
 // float iSp_angle; // current angle
-char *iSp_id;   // iSpindel name
-float pressure; // manual from BF at the moment
+// moved to getBFData.h
+/* const char *iSp_id; // const char for printing to screen
+String iSp_name; // iSpindel name BF
+float pressure;  // manual from BF at the moment
 // float iSp_temp;  // iSpindel 'aux' temperature
 float iSp_sg;  // present SG
 float iSp_sga; // temperature 20C adjusted present SG
 float Itemp;   // unadjusted iSpindel temperature
 // float last_angle; // store the last angle to be able to compare in future?
 float App_Att;
-int batch_No;
-int page_counter = 1;
+int16_t batch_No; // 
+int rssi; // BF rssi for iSpindel
+float battery;
+float angle; */
 
-// screen stuff ------------------------------------------------------------------------------------
-TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
-// Callback function to provide the pixel color at x,y //AA
-// uint16_t pixelColor(uint16_t x, uint16_t y) { return tft.readPixel(x, y); } // AA fonts
+// http://www.barth-dev.de/online/rgb565-color-picker/ // now in config.h
 
-// http://www.barth-dev.de/online/rgb565-color-picker/
-#define TFT_GREY 0x5AEB
-#define lightblue 0x647B
-#define pinkish 0xEBCA
-#define darkred 0xA041
-#define skyblue 0x373E
-#define blue 0x5D9B
-#define bronze 0xE5EC
-#define yeast 0xD676
 
-int16_t Backgnd = TFT_GOLD;
-int16_t InnerBac = TFT_BLACK;
-int16_t WaitHeat = pinkish;
-int16_t Heating = TFT_RED;
-int16_t WaitCool = skyblue;
-int16_t Cooling = TFT_BLUE;
-int16_t WaitPeak = TFT_BROWN;
-int32_t Idle = TFT_GREY;
+// Function prototypes for each screen display
+void switchScreen();
+void screen1();
+void screen2();
+void screen3();  
+// void screen4();
 
-int lastState; // global variable
+// TinyMQTT Broker ---------------------------------------------------------------------------
+// TinyMQTT Broker bpl or bplfw topic ----------------------------------------------------------------------------
 
-// GLOBAL variables for BPL
-String BPLIP;
-float Bpressure;
-
-// https://github.com/martin-ger/uMQTTBroker/blob/master/examples/uMQTTBrokerSampleOOFull/uMQTTBrokerSampleOOFull.ino
-//
-
-// Get NTP Time
-const long utcOffsetInSeconds = UTC_offset; // AEDT need to reenter offset for daylight saving time DST
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
-
-// MQTT Broker
-//  Custom broker class with overwritten callback functions - whatever that means
-//
-class myMQTTBroker : public uMQTTBroker
+void onPublishA(const MqttClient * /* source */, const Topic &topic, const char *payload, size_t length /* length */) // added length
+//{ Serial << "--> bpl " << topic.c_str() << ", " << bpldata << endl; Serial.println("");} // comment out when json used
 {
-public:
+  // debug to identify topic
+ Serial.println("");
+ Serial.print("Message received on topic: ");
+ Serial.println(topic.c_str());
+
+ // messages from both topics (topic/bpl and topic/bplfw)  go into the same data structure bpl_Data
+ // Use the topic to determine the display actions
+  if (strcmp(topic.c_str(), "bpl") == 0) {
+    Source = "bpl";
+    lastBPLMessageTime = millis(); // Update the time of the last bpl message
+    Debug(" Received from ");Debugln(Source);
+  }else if (strcmp(topic.c_str(), "bplfw") == 0){
+   Source = "bplfw";
+    lastBPLMessageTime = millis(); // Update the time of the last bpl message //rec
+    Debug(" Received from ");Debugln(Source); 
+  }
+    
+  // Clear previous data "zeroes out" the memory occupied by the bpl_Data variable or structure
+  memset(&bpl_Data, 0, sizeof(bpl_Data));
+      
+  StaticJsonDocument<512> doc;   // was  384 increased to 512 with the iSp name
+  DeserializationError error = deserializeJson(doc, (String)payload); // 
+  if (error)
+  {
+    Serial.print(F("BPL deserializeJson() failed: "));
+    Serial.println(error.f_str());
+    return;
+  }
+  // Extract data from the JSON document
+  bpl_Data.state = doc["state"];
+  bpl_Data.beerTemp = doc["beerTemp"];
+  bpl_Data.beerSet = doc["beerSet"];
+  bpl_Data.fridgeTemp = doc["fridgeTemp"];
+  bpl_Data.fridgeSet = doc["fridgeSet"];
+  bpl_Data.roomTemp = doc["roomTemp"];
+  bpl_Data.mode = doc["mode"];
+  bpl_Data.pressure = doc["pressure"];
+  bpl_Data.gravity = doc["gravity"]; // present gravity
+  bpl_Data.plato = doc["plato"];
+  bpl_Data.voltage = doc["voltage"];
+  bpl_Data.auxTemp = doc["auxTemp"];// iSpindel or GM
+  bpl_Data.tilt = doc["tilt"]; // angle
+  bpl_Data.hydrometerRssi =doc["hydrometerRssi"]; // bpl iSp rssi 
+  bpl_Data.Hydro =doc["hydrometerName"]; // need bpl iSpindel name
+
+  // print out the received data for debugging
+  Serial.println("bpl JSON:"); Serial.print("BPL was stale = 1  ");Serial.println(BPLstale);
+  // serializeJsonPretty(doc, Serial);
+  serializeJson(doc, Serial);
   
-  virtual bool onConnect(IPAddress addr, uint16_t client_count)
-  {
-    Serial.println(addr.toString() + " BPL connected");
-    BPLIP = (addr.toString());
-    return true;
+  // for BPL only used by screen2
+  if (brewF == 0) {
+  iSp_sg = bpl_Data.gravity;
+  battery = bpl_Data.voltage;
+  Itemp = bpl_Data.auxTemp;
+  angle = bpl_Data.tilt;
+  rssi = bpl_Data.hydrometerRssi; //ispindelRssi;   
+  Hydro = bpl_Data.Hydro;
+    } 
+  
+  // forward iSpindel/hyrometer name from BF
+  if (brewF == 1){
+  Hydro = iSp_id;
   }
-
-  virtual bool onAuth(String username, String password)
-  {
-    Serial.println("BPL  Username/Password: " + username + "/" + password);
-    return true;
+  // Receive only if Rec Selected ie bplfw add in the derived functions AA and ABV
+  if (Rec){
+  App_Att = bpl_Data.AA; 
+  adjABV = bpl_Data.ABV;
+  rssi = bpl_Data.hydrometerRssi; // ispindelRssi; //rec 
+  Hydro = bpl_Data.Hydro;
+  // if no iSpindel attached to BPL causes rssi to display  0 ok
+  // but when Rec is also using BF with an iSpindel attached to batch the rssi is shown until wiped by bplfw being 0
   }
+}  
 
-  virtual void onData(String topic, const char *data, uint32_t length)
+  /* // Added some BF data before sending on to the target broker  CHATGPT
+  // Add new key-value pairs 
+   bpl["tilt"] = angle; 
+   bpl["auxTemp"] = Itemp;
+   bpl["gravity"] = iSp_sg;
+   bpl["voltage"] = battery;
+   // add identifier of sender
+   bpl["sender"] = sender; // 92
+   serializeJson(bpl, serializedJson); // was pretty */
+    
+  // Debugln("Original bpl JSON plus some BF data:");
+  // Debugln(serializedJson);
+
+
+  // Ref only ----------------------------------------------------------------------------------------------------------
+  // // error trap and message if BF batch_id not decoded
+  // String batch_ln = String(batch_id);
+  // if (batch_ln.length() == 0){
+  // Debug("No Batch ID received -  ");
+  // Debugln("Brewfather not connected");
+  // tft.fillRect(4,155,310,62,TFT_BLACK);
+  // tft.setCursor(60,180);
+  // tft.setTextFont(1);
+  // tft.setTextColor(TFT_RED,TFT_BLACK);
+  // tft.print("BF NOT CONNECTED");
+  // tft.setTextColor(TFT_SILVER,TFT_BLACK);
+  // // return;
+  // }
+  
+// TinyMQTT Broker GravityMonitor -------------------------------------------------------------------------------
+void onPublishB(const MqttClient * /* source */, const Topic &topic3, const char *gmdata, size_t length /* length */) // added length
+// { Serial << "--> gravitymon " << gm.c_str() << ", " << gmdata << endl; Serial.println(""); } // comment out when json used
+{
+
+  // if topic includes gm i.e gravmon = blue test iSpindel
+  StaticJsonDocument<192> gmon; //  192 from arduino json assistant
+  DeserializationError error1 = deserializeJson(gmon, (String)gmdata);
+  if (error1)
   {
-    char data_str[length + 1];
-    os_memcpy(data_str, data, length);
-    data_str[length] = '\0';
+    Serial.print(F("GM deserializeJson() failed: "));
+    Serial.println(error1.f_str());
+    return;
+  }
+  // from arduinojson  assistant
+  const char *gname = gmon["name"]; // "iSpindelblue"
+  const char *gID = gmon["ID"];            // "389c58"
+  // gtoken = gmon["token"];      // "gravmon"
+  // int ginterval = gm["interval"]; // 900
+  gtemp = gmon["temperature"]; // 28.5 "C"
+  ggrav = gmon["gravity"]; // 1.1467
+  gangle = gmon["angle"];  // 87.06
+  gbatt = gmon["battery"]; // 3.78
+  grssi = gmon["rssi"];    // -71
 
-    // uncomment to Print BPL for debugging
-    // debugln((String)data_str);
-    // debugln("received topic '"+topic+"' with data '"+(String)data_str+"'");
-    debugln("");
-    debugln("This is FermWatch VERSION " + version);
-    debugln("");
+  /* Debugging
+  Debugln(" ");Debugln("GravityMon data details ");
+  Debug(F("Name:    ")); Serial.println(gname);
+  Debug("GM ID:   ");Serial.println(gID);
+  Serial.printf("GM temp =  %.1f C\n", gtemp);
+  Serial.printf("GM SG =  %.5f deg.\n", ggrav); // .4 decimal places
+  Serial.printf("GM Battery =  %.2f V\n", gbatt);
+  Serial.printf("GM Angle   =  %.2f deg.\n", gangle);
+  Serial.print("GM RSSI     = ");Serial.println(grssi);
+  Debugln(""); */
+  
+  // see screen2 GM flags and display
+  Debug("");Debugln("gm from Gravity Mon");
+  serializeJson(gmon, Serial);
+  // GM global
+  GMname = gname;
+  GMID = gID;
 
-    // if topic BPL i.e. lower case bpl42
-    //   https://arduinojson.org/v6/assistant/
+} // end of if topic gm
 
-    StaticJsonDocument<256> bpl42; // was 256 changed bpl to bpl42
-    DeserializationError error = deserializeJson(bpl42, (String)data_str); // changed bpl to bpl42
-    if (error)
-    {
-      debug(F("BPL deserializeJson() failed: "));
-      debugln(error.f_str());
+
+ // Global Screen variables // NB if you get this number wrong you will have too many OR too few screens shown!  
+ byte numScreens = 2;
+
+  
+
+byte currentScreen = 0;  // Variable to store the current screen number
+const int screenInterval =10000;  // 10 seconds
+const int totalInterval = 90000;  // 90 seconds 
+unsigned long previousMillis = 0;  
+
+
+
+// Screen 1 BPL
+// Screen 2 BF Batch 1
+// Screen 3 BF Batch 2
+// Screen 4 Configuration not used
+
+// config screen Button instances  ie screen positioning and button names
+// column 1 
+Button button1(20, 40, 130, 25,  "    BF    ");
+Button button2(20, 80, 130, 25,  "   2FV?   ");
+Button button3(20, 120, 130, 25, "    GM    ");
+Button button4(20, 160, 130, 25, "  wm WIPE");
+Button button5(20, 200, 130, 25, " Temp_Corr ");
+// buttons column 2
+Button button6(170, 40, 130, 25,   "   Fahr  ");
+Button button7(170, 80, 130, 25,   "  Plato ");
+Button button8(170, 120, 130, 25,  " Receiver "); //rec
+Button button9(170, 160, 130, 25,  "  BF_Poll  ");
+Button button10(170, 200, 65, 25, " OK ");  // need a highlight when pressed
+Button button11(245, 200, 65, 25, "DONE" ); //  Config Completed also button for testing - print config
+
+// function to handle button interactions in the loop
+void handleButtonInteraction(ScreenPoint sp, Button &button, bool &setting, const char* settingName) {
+  if (button.isClicked(sp)) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      lastDebounceTime = millis();
+      setting = !setting;// needed this
+      
+      buttonState = !buttonState;
+      if (buttonState != lastButtonState) {
+        lastButtonState = buttonState;
+        setting = buttonState;
+        Serial.print(settingName);
+        Serial.print(": ");
+        Serial.println(setting);
+      }
+    }
+  }
+} 
+
+
+// screens
+// screen 3 is pretty much a duplicate of screen 2 for a second batch/fermenter
+// Define a function to handle screen switching:
+// The switchScreen() function is called whenever the screen needs to be switched, 
+// such as in the loop() function based on timing or external events. 
+// It ensures that the correct screen function is called to update the display accordingly.
+
+void switchScreen(int screenNumber) {
+  // Perform actions based on the screenNumber value needs to match Number of screens set
+    
+ switch (screenNumber) {
+    case 0:
+      screen1();
+      break;
+    case 1:
+      screen2();
+      break;
+    case 2:
+      screen3();
+      break;
+    case 3:
+      // screen4(); // spare
+      break;
+    default:
+      // Handle invalid screenNumber value
+      break;
+  }
+}
+    /* // now in getBFData.h
+    
+    bool rstDONE;
+
+    // set DONE to true Prefs to withstand reset in the heap code
+    void SetrstDONETruePrefs() {
+      rstDONE = true;
+      Preferences preferences;
+      preferences.begin("config", false);
+      preferences.putBool("rstDONE", rstDONE);
+      preferences.end();
+      
+    }
+    // use in the in the post setup code in the loop
+    bool getrstDONEPrefs() {
+      Preferences preferences;
+      preferences.begin("config", true); // Open preferences in read-only mode
+      rstDONE = preferences.getBool("rstDONE", false);
+      preferences.end();
+      Serial.print("rstDONE: "); Serial.println(rstDONE);
+      return true;
+    }
+
+   
+    // Unsubtle -- but if the heap reduces to 70000 bytes restart the esp
+    void checkFreeHeap() {
+      size_t freeHeap = ESP.getFreeHeap();
+      Serial.print("Free Heap: ");
+      Serial.println(freeHeap);
+      
+      if (freeHeap < 80000) {
+        Serial.println("Free heap is below 80,000 bytes. Blue led on.");
+        digitalWrite(CYD_LED_BLUE, LOW); // LOW is on BLUE
+        digitalWrite(CYD_LED_RED, HIGH);
+        digitalWrite(CYD_LED_GREEN, HIGH);
+      }
+            
+      // Check if free heap is below 70,000 bytes
+      if (freeHeap < 70000) {
+        // set rstDONE to true Prefs to withstand reset
+        SetrstDONETruePrefs();
+        Serial.println("Free heap is below 70,000 bytes. Initiating restart.");
+        ESP.restart();
+      }
+      }
+ */
+
+
+//############################################################## setup
+void setup() 
+{
+ // Initialize LittleFS for angle trend indicator future use SD Card?
+  
+  Serial.begin(115200);
+  Serial.println(F(""));
+
+  // anglefile not used
+  /* if (!LittleFS.begin()) {
+    Serial.println("Formatting LittleFS...");
+    LittleFS.format();
+    if (!LittleFS.begin()) {
+      Serial.println("Failed to format LittleFS!");
       return;
     }
-
-    // error trap and message if BF batch_id not decoded
-    String batch_ln = String(batch_id);
-    if (batch_ln.length() == 0)
-    {
-      debug("No Batch ID received -  ");
-      debugln("Brewfather not connected");
-      tft.fillRect(4, 155, 310, 62, TFT_BLACK);
-      tft.setCursor(60, 180);
-      tft.setTextFont(1);
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.print("BF NOT CONNECTED");
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      // return;
-    }
-
-    // PAGES
-    // Counter to change positions of pages https://www.instructables.com/Arduino-LCD-16x2-Turn-Single-Screen-Into-Multiple-/
-    //------- Switch function between pages---// replace with touch?
-    switch (page_counter)
-    {
-    case 1:
-    { // BPL Page 1
-
-      // BPL STATUS     ideally this would show on the Summary and iSpindel screens as well
-
-      int state = bpl42["state"]; // 4
-      debug("BPL Status : ");
-      // Status indicated by the colour of the border
-      // Avoid the whole screen refreshing unnecessarily when status has not changed  - not a problem with the alternating screens still startup issue with yellow border!
-      // debug
-
-      Serial.printf("Last State %i  Current State %i \n", lastState, state);
-      if (state == 0)
-        ;                                             // try this think it is working OK perhaps not!
-      tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac); // clear startup/last screen need to do only once on startup as it invalidates the selections below
-      // if (lastState != state && state==0);
-      // if new state not equal to old state (lastState) and State =  change the screen or if last state the same - maintain colour
-
-      if ((lastState != state && state == 0) || lastState == 0)
-      {
-        {
-          debugln("Idling  ");
-          tft.fillRoundRect(0, 0, 320, 240, 2, Idle);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-      // if (state == 0 ) {debugln("Idling"); tft.fillScreen(Idle);tft.fillRoundRect(4,4,312,232,2, InnerBac); }
-
-      if ((lastState != state && state == 1) || lastState == 1)
-      {
-        {
-          debugln("OFF");
-          tft.fillScreen(TFT_SILVER);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 2) || lastState == 2)
-      {
-        {
-          debugln("Door Open");
-          tft.fillScreen(Idle);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 3) || lastState == 3)
-      {
-        {
-          debugln("Heating  ");
-          tft.fillScreen(Heating);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-      // if (state == 4)  { debugln("Cooling");tft.fillScreen(Cooling);tft.fillRoundRect(4,4,312, 232, 2, InnerBac);}
-      if ((lastState != state && state == 4) || lastState == 4)
-      {
-        {
-          debugln("Cooling  ");
-          tft.fillRoundRect(0, 0, 320, 240, 2, Cooling);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 5) || lastState == 5)
-      {
-        {
-          debugln("Waiting to Cool  ");
-          tft.fillScreen(WaitCool);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 6) || lastState == 6)
-      {
-        {
-          debugln("Waiting to Heat  ");
-          tft.fillScreen(WaitHeat);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 7) || lastState == 7)
-      {
-        {
-          debugln("Waiting for peak  ");
-          tft.fillScreen(WaitPeak);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 8) || lastState == 8)
-      {
-        {
-          debugln("Cooling Time");
-          tft.fillScreen(Idle);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-
-      if ((lastState != state && state == 9) || lastState == 9)
-      {
-        {
-          debugln("Heating Time");
-          tft.fillScreen(Idle);
-          tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-        }
-      }
-      lastState = state;
-      // }
-
-      // Fixed Text
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setCursor(40, 40);
-      tft.println("Room");
-      tft.setCursor(170, 40);
-      tft.println("Beer");
-
-      tft.setFreeFont(&Orbitron_Medium_18);
-      tft.fillRect(10, 55, 245, 38, TFT_BLACK); // yes  needs to be behind custom text moved here to get rid of flicker
-
-      // Conversions F to C
-      // float TempC;
-      //  // TempF = 0;
-      // float TempF = (TempC*1.8)+32.0;
-      // Serial.print(TempF);
-      // Serial.println("°C");
-
-      // Room Temp
-      float roomTemp = bpl42["roomTemp"]; // 35 C
-      if (Fahr == true)
-      {
-        float FroomTemp = ((roomTemp * 1.8) + 32.0);
-        Serial.printf("Room Temp  =  %.1f F\n", FroomTemp); // minimum number of digits to write 100.0
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 90);
-        if (FroomTemp < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position for non skinny digits
-          tft.setCursor(42, 90);
-        }
-        tft.println(FroomTemp, 1); // get the room temp ,1 one decimal place
-      }
-      else if (Fahr == false)
-      {
-        Serial.printf("Room Temp  =  %.1f C\n", roomTemp); // https://alvinalexander.com/programming/printf-format-cheat-sheet/  \n for newline == println
-        // debugln(roomTemp,1);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 90);
-        if (roomTemp < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position for non skinny digits
-          tft.setCursor(42, 90);
-        }
-        tft.println(roomTemp, 1); // get the room temp ,1 one decimal place
-      }
-      // Beer temp
-      float beerTemp = bpl42["beerTemp"]; // 10.074
-      if (Fahr == true)
-      {
-        float FbeerTemp = ((beerTemp * 1.8) + 32.0);
-        Serial.printf("Beer Temp  =  %.1f F\n", FbeerTemp);
-
-        tft.setTextColor(TFT_GOLD, TFT_BLACK);
-        tft.setCursor(145, 90);
-
-        if (FbeerTemp < 10.0)  // < less than try using 10.0 rather than 10 ver 1.2 corrected position Fbeer not beer
-        { 
-          //   // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(177, 90);
-        }
-        tft.println(FbeerTemp, 1); // get the beer temp
-      }
-      else if (Fahr == false)
-      {
-        Serial.printf("Beer Temp =  %.1f C\n", beerTemp);
-
-        tft.setTextColor(TFT_GOLD, TFT_BLACK);
-        tft.setCursor(145, 90);
-        if (beerTemp < 10)
-        {
-          //   // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(177, 90);
-        }
-        tft.println(beerTemp, 1); // get the beer temp
-      }
-      // Fixed text
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setCursor(280, 115); // was 280,130
-      if (Fahr == true)
-      {
-        tft.println("F");
-        debugln("Fahrenheit set");
-      }
-      else if (Fahr == false)
-      {
-        tft.println("C");
-        debugln("Celsius set");
-      }
-      tft.setTextFont(1);
-      tft.setCursor(265, 85); // tft.drawCircle(89, 56, 2); // was 265,100
-      tft.println("o");
-
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setTextFont(1);
-      // Fixed Text
-      tft.setCursor(30, 100);
-      tft.println("Fridge");
-      tft.setCursor(155, 100);
-      tft.println("Target");
-
-      tft.setFreeFont(&Orbitron_Medium_18);
-      tft.fillRect(10, 115, 245, 35, TFT_BLACK); // background for custom font
-
-      // Fridge Temp
-      float fridgeTemp = bpl42["fridgeTemp"]; // 14.893
-      if (Fahr == true)
-      {
-        float FfridgeTemp = ((fridgeTemp * 1.8) + 32.0);
-        Serial.printf("F Fridge Temp  =  %.1f F\n", FfridgeTemp);
-
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 150);
-        if (FfridgeTemp < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(42, 150);
-        }
-        tft.println(FfridgeTemp, 1); // get the beer temp
-      }
-      else if (Fahr == false)
-      {
-        Serial.printf("Fridge Temp =  %.1f C\n", fridgeTemp);
-
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setCursor(10, 150);
-        if (fridgeTemp < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(42, 150);
-        }
-        tft.println(fridgeTemp, 1); // get the room temp ,1 one decimal place
-      }
-      // Beer Set ie Target Temperature
-      float beerSet = bpl42["beerSet"]; // 10
-      if (Fahr == true)
-      {
-        float FbeerSet = ((beerSet * 1.8) + 32.0);
-        Serial.printf("F Target Temp  =  %.1f F\n", FbeerSet);
-        tft.setTextColor(TFT_MAGENTA, TFT_BLACK);
-        tft.setCursor(145, 150);
-        if (FbeerSet < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(177, 150);
-        }
-        tft.println(FbeerSet, 1); // get the beer temp
-      }
-      else if (Fahr == false)
-      {
-        Serial.printf("Target Temp  =  %.1f C\n", beerSet);
-
-        tft.setTextColor(TFT_MAGENTA, TFT_BLACK);
-        tft.setCursor(145, 150);
-        if (beerSet < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(177, 150);
-        }
-        tft.println(beerSet, 1); // get the beer set temp ,1 one decimal place
-      }
-      // _---------------------------------------------------------------------
-      // for use when information comes via BPL
-      // float fridgeSet = doc["fridgeSet"]; // 13.752
-      // debug("Fridge Set :  ");
-      // debugln(fridgeSet);
-
-      // // iSpindel
-      // float plato = doc["plato"]; // 13.752
-      // debug("Plato :  ");
-      // debugln(plato);
-
-      // float auxTemp = doc["auxTemp"]; // 13.752
-      // debug("iSpindel Temp :  ");
-      // debugln(auxTemp,1);
-
-      // float voltage = doc["voltage"]; // 13.752
-      // debug("iSpindel V :  ");
-      // debugln(voltage);
-
-      // float tilt = doc["tilt"]; // 13.752
-      // debug("iSpindel Angle :  ");
-      // debugln(tilt);
-      Bpressure = bpl42["pressure"]; // leave for diag if pressure direct from BPL rather than via BF
-      Serial.printf("BPL Pressure  =  %.1f PSI\n", Bpressure);
-
-      // Mostly BPL MODE Screen
-      // tft.fillRoundRect(0,0,320,240,2, Idle);tft.fillRoundRect(4,4,312,232,2, InnerBac);// clear the screen
-      tft.setTextFont(1);
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setCursor(12, 12);
-      int mode = bpl42["mode"]; // 3
-      debug("BPL MODE :  ");
-      if (mode == 0)
-      {
-        debugln("OFF ");
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.println("OFF");
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      }
-      if (mode == 1)
-      {
-        debugln("FRIDGE CONSTANT ");
-        tft.fillRoundRect(0, 0, 320, 240, 2, Idle);
-        tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac); // clear the screen
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.println("Fridge Constant");
-
-        // if Fridge Constant then Target beerSet should change to fridgeSet value   the rest of the screen has no values displayed
-        float fridgeSet = bpl42["fridgeSet"]; // 13.752
-        debug("Fridge Set :  ");
-        debugln(fridgeSet);
-        tft.setFreeFont(&Orbitron_Medium_18);
-        tft.fillRect(10, 115, 245, 35, TFT_BLACK); // background for custom font
-        tft.setTextColor(TFT_MAGENTA, TFT_BLACK);
-        tft.setCursor(145, 150);
-        if (fridgeSet < 10)
-        {
-          // change cursor posn +32px if less than 10 to align the display position
-          tft.setCursor(177, 150);
-        }
-        tft.println(fridgeSet, 1); // get the fridge temp ,1 one decimal place
-      }
-      tft.setTextFont(1);
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setCursor(12, 12);
-      if (mode == 2)
-      {
-        debugln("BEER CONSTANT");
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.println("Beer Constant");
-      }
-      if (mode == 3)
-      {
-        debugln("BEER PROFILE");
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.println("Beer Profile");
-      }
-
-      // // Fixed Text
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setTextFont(1);
-      tft.setCursor(20, 160);
-      // tft.println("Orig. Grav.");
-      tft.println("App.Att. %");
-      tft.setCursor(210, 160);
-      tft.println("ABV % ");
-
-      tft.setFreeFont(&Orbitron_Medium_18);
-      tft.fillRect(10, 175, 245, 35, TFT_BLACK); // background for custom font
-      // ---------------------------------------------------------------------------------------------------------------------------------
-      // Apparent Attenuation
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.setCursor(20, 210);
-      if (iSp_sg == 0)
-      { // if iSp_sg not received yet print blank  don't forget the ==
-        tft.println("");
-      }
-      else if (iSp_sg > 0)
-      {
-        App_Att = (((SGogy - 1) - (iSp_sg - 1)) / (SGogy - 1)) * 100; // 40 - say 20  =20/40 = 50% * by 100
-        bool neg_Val = App_Att < 0;                                   // trap negative numbers and force to zero
-        if (neg_Val)
-          App_Att = 0;
-        tft.println(App_Att, 1);
-        Serial.printf("Current Apparent Attenuation = %.2f%s\n", App_Att, "%");
-        debugln("");
-      }
-
-      // App Att corrected for iSp temperature
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.setCursor(20, 210);
-      if (iSp_sg == 0)
-      { // if iSp_sg not received yet print blank  don't forget the ==
-        tft.println("");
-      }
-      else if (Temp_Corr == true)
-      {
-        (iSp_sg = iSp_sga);                                                       // use iSp_sga
-        float App_Att_Corr = (((SGogy - 1) - (iSp_sga - 1)) / (SGogy - 1)) * 100; // using temp adjusted PG
-        tft.println(App_Att_Corr, 1);
-        tft.fillCircle(130, 185, 6, TFT_ORANGE); // indicator that temp correction is active
-        // testing omly
-        Serial.printf("Current Temp Corr. Apparent Attenuation = %.2f%s\n", App_Att, "%");
-        debugln("");
-      }
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-
-      // ABV   from iSpindel calc in SG display in Plato option
-      tft.setFreeFont(&Orbitron_Medium_18);
-
-      if (iSp_sg <= 0)
-      { // if iSpindel gravity not received yet removed the - 0 or negative don't calculate abv
-        abv = 0.0;
-        Serial.printf("ABV   =  %.2f%s\n", abv, "%");
-        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.setCursor(195, 210);
-        tft.println("--.--");
-      }
-      else if (iSp_sg > 0)
-      {                 // greater than zero was not equal to zero
-        float Init_abv; // first calc ABV then work out the fudge factor https://www.gov.uk/government/publications/excise-notice-226-beer-duty/excise-notice-226-beer-duty--2#calculation-strength
-        Init_abv = ((SGogy - iSp_sg) * 131.25);
-        Serial.printf("Initial ABV = %.3f\n", Init_abv); // nominal 131.25 bit high as 6% beers! seems to be what BF uses
-        if (Init_abv >= 0.0 && Init_abv <= 3.3)
-          ABV_adjG = 128;
-        if (Init_abv >= 3.3 && Init_abv <= 4.6)
-          ABV_adjG = 129;
-        if (Init_abv >= 4.6 && Init_abv <= 6.0)
-          ABV_adjG = 130;
-        if (Init_abv >= 6.0 && Init_abv <= 7.5)
-          ABV_adjG = 131;
-        if (Init_abv >= 7.5 && Init_abv <= 9.0)
-          ABV_adjG = 132;
-        if (Init_abv >= 9.0 && Init_abv <= 10.5)
-          ABV_adjG = 133;
-        if (Init_abv >= 10.5 && Init_abv <= 12.0)
-          ABV_adjG = 134;
-
-        debug("Fudge : ");
-        debugln(ABV_adjG);
-
-        // recalculate the ABV using the fudge factor and print the results
-
-        adjABV = ((SGogy - iSp_sg) * ABV_adjG);
-        Serial.printf("Adjusted ABV   =  %.2f%s\n", adjABV, "%");
-        tft.setTextColor(bronze, TFT_BLACK);
-        tft.setCursor(195, 210);
-        tft.println(adjABV, 2); // 2 dp as an indicator of change not for accuracy
-        // tft.setTextColor(TFT_ORANGE,TFT_BLACK); // tft.setCursor(180,190); // if temp adjusted SG
-        if (Temp_Corr == true)
-        {
-          tft.fillCircle(306, 185, 6, TFT_ORANGE); // indicator that temp correction is active
-        }
-      } // end abv adjustment
-
-      // Don't forget the ==
-      // x == y (x is equal to y)
-      // x != y (x is not equal to y)
-      // x <  y (x is less than y)
-      // x >  y (x is greater than y)
-      // x <= y (x is less than or equal to y)
-      // x >= y (x is greater than or equal to y)
-
-      tft.setTextFont(1);
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-    }
-    break;
-
-    } // switch end
-
-    // iSpindel data ref only
-    // decode name
-    // if topic ispindel separate not a JSON? these messages received after setting iSp to 192.168.0.27 and port 1883
-    // ispindel/Devices' name/temperature   'ispindel/iSpindelBLU[SG]/temperature' with data '25.5'
-    // ispindel/Devices' name/temp_units    'ispindel/iSpindelBLU[SG]/temp_units' with data 'C'
-    // ispindel/Devices' name/tilt          'ispindel/iSpindelBLU[SG]/tilt' with data '89.41939'
-    // ispindel/Devices' name/battery       'ispindel/iSpindelBLU[SG]/battery' with data '3.847758'
-    // ispindel/Devices' name/interval      'ispindel/iSpindelBLU[SG]/interval' with data '900'
-    //                                      'ispindel/iSpindelBLU[SG]/interval' with data '1'  ???? random message
-    // ispindel/Devices' name/RSSI          'ispindel/iSpindelBLU[SG]/RSSI' with data '-92'
-    // ispindel/Devices' name/gravity       'ispindel/iSpindelBLU[SG]/gravity' with data '1.111492'   sg
-
-    //  // error trap else
   }
-};
-// -----------------------------------------------------------------------------------------------
-//  BPL JSON ref only
-// String payload=""; //whole json
-//  int status; //stateState in Integer. 0:IDLE, 1:STATE_OFF,2: DOOR_OPEN, 3:HEATING, 4: COOLING, 5: WAITING_TO_COOL, 6:WAITING_TO_HEAT, 7:WAITING_FOR_PEAK_DETECT, 8:COOLING_MIN_TIME, 9:HEATING_MIN_TIME
-//  int beerTemp; //beer temp
-//  int beerSet; // beer set
-//  int fridgeTemp;//fridge temp
-//  int fridgeSet; // fridge set
-//  int roomTemp; // room temperature
-//  int mode; //mode
-//  int pressure;  //pressure
-// {"state":0,"beerTemp":9.744,"beerSet":9.5,"fridgeTemp":9.75,"fridgeSet":9.238,"roomTemp":23.813,"mode":3,"pressure":0} example message
+  
+  Serial.println("LittleFS initialized successfully.");
 
-myMQTTBroker myBroker;
+// Check if the angle file exists
+  bool angleFileExists = LittleFS.exists(AngleFile);
 
-void setup()
-{ // WiFi.disconnect();
-  // TFT Splash Screen
-  tft.init(); //  tft.begin(); difference?
-  // for AA fonts
-  // tft.setCallback(pixelColor);  // Switch on color callback for anti-aliased fonts
-  // tft.setCallback(nullptr);   // Switch off callback (off by default)
+// Load the previous angle value from the file, if it exists
+  if (angleFileExists) {
+    File file = LittleFS.open(AngleFile, "r");
+    DeserializationError error = deserializeJson(angleData, file);
+    if (error) {
+      Serial.println("Failed to read angle file");
+    }
+    else {
+      if (angleData.containsKey("average")) {
+        previousAverage = angleData["average"];
+        Serial.print("Previous average: ");
+        Serial.println(previousAverage, 2);
+      }
+    }
+    file.close();
+  }
+ */
 
-  tft.setRotation(1); // landscape
-  // tft.loadFont(AA_FONT_LARGE); // AA
-  // delay(2000);
-  // tft.setTextSize(1);
-  tft.fillScreen(Backgnd);
-  tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-  tft.setTextColor(bronze, TFT_BLACK);
-  tft.setTextSize(3);
-
-  tft.setCursor(90, 105); // was 90,105
-  tft.println("FermWatch");
-
-  // tft.unloadFont(); // Remove the font to recover memory used AA
-  // tft.loadFont(AA_FONT_MONO); // AA
-  tft.setTextSize(2);
-  // tft.setFreeFont(&NotoSans_Regular20pt7b);
-  tft.setCursor(90, 145);
-  tft.println("Version " + version);
-
-  // Yeast budding  A grey ellipse origin at (70, 140) with horizontal radius of 35, and vertical radius of 30
-  tft.fillEllipse(45, 80, 35, 30, yeast); // mother
-  delay(2500);
-  tft.fillEllipse(100, 70, 20, 15, yeast); //  daughter
-
-  tft.setCursor(20, 190);
-  tft.println("Look for FermWatch_AP");
-  // tft.unloadFont(); // Remove the font to recover memory used AA
-
-  tft.setTextSize(2);
-  delay(4000);
-
-  pinMode(LED_BUILTIN, OUTPUT); // onboard led light 8266
-
-  // eg from https://github.com/witnessmenow/ESP32-WiFi-Manager-Examples/blob/main/UseCase1_Simple/UseCase1_WithWM/UseCase1_WithWM.ino
-
-  // Change to true when testing to force configuration every time we run
-  // Made this TRUE so that a single reset causes a cycle through the config cycle to get around
-  // the problem of a single reset in some way altering the bool Fahr and Plato to true
-  // ******** set to false for normal operation so on power failure it automatically restarts **********
-  bool forceConfig = false;
-
-  Serial.begin(115200);
-  delay(10);
-
-  // interpolation for temperature correction
-  // void test_interpolation();
-
-  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
-  if (drd->detectDoubleReset())
-  {
-    Serial.println(F("Forcing config mode as there was a Double reset detected"));
-    forceConfig = true;
+ /* Ref only
+ // Initialize Wi-Fi
+  WiFi.begin();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
   }
 
-  bool LittleFSSetup = loadConfigFile();
-  if (!LittleFSSetup)
+  // Obtain and print the MAC address for fixing IP address on the router
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  Serial.print("MAC Address: ");
+  for (int i = 0; i < 6; ++i) {
+    Serial.print(mac[i], HEX);
+    if (i < 5) {
+      Serial.print(':');
+    }
+  }
+  Serial.println(); */
+
+  // *****************************   SET TO false for auto operation   *************************************
+  // needs to be here so you don't do touch cali every time 
+  bool forceConfig = false; // 1.2.X true takes us to the AP  true after reset launched AP put back to false for normal operation and works automatically after restart
+  bool prefsSetup = retrieveAuthFromPreferences(); retrieveUTCFromPreferences();retrieveTargetIPFromPreferences();
+  if (!prefsSetup) 
   {
     Serial.println(F("Forcing config mode as there is no saved config"));
     forceConfig = true;
   }
-  // set up hostname for the router different from esp32
-  WiFi.hostname(hostname); // just before WIFI.mode etc
-  WiFi.mode(WIFI_STA);     // explicitly set mode, esp defaults to STA+AP
 
-  WiFiManager wm;
+  // set up hostname for the router 
+  WiFi.hostname(hostname); // just before WIFI.mode etc works
+  WiFi.mode(WIFI_STA);        // explicitly set mode, esp defaults to STA+AP
+  
+  pinMode(CYD_LED_RED, OUTPUT);
+  pinMode(CYD_LED_GREEN, OUTPUT);
+  pinMode(CYD_LED_BLUE, OUTPUT);
+  
+  // Initially, turn off all LEDs
+  digitalWrite(CYD_LED_RED, HIGH);
+  digitalWrite(CYD_LED_GREEN, HIGH);
+  digitalWrite(CYD_LED_BLUE, HIGH);
+  
+  /* // Define CYAN color (R: 0, G: 100, B: 100)
+  analogWrite(CYD_LED_RED, 255);     // Turn off red 255 ie HIGH
+  analogWrite(CYD_LED_GREEN, 155);  // Adjust green intensity (100/255 = 39% ,  255* 39% =~100 ,Inversion = 255 - 100 = 155)
+  analogWrite(CYD_LED_BLUE, 155);   // Adjust blue intensity ( ditto
+   */
+    
+  // TFT Splash Screen
+  tft.init();
+  tft.setRotation(1);
+
+  tft.fillScreen(TFT_ORANGE);
+  tft.fillScreen(Backgnd);
+  tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
+  
+  // open font render setup
+  ofr.setDrawer(tft); // Link drawing object to tft instance (so font will be rendered on TFT)
+  
+  // sprite for clock  
+  sprite.createSprite(100,28); // could be size of screen here w by h
+  ofr.setFontColor(TFT_SILVER,TFT_BLACK);
+
+    // Load the font and check it can be read OK
+    if (ofr.loadFont(TTF_FONT, sizeof(TTF_FONT))) {
+      Serial.println(F("Initialise error"));
+      return;
+    }
+  
+  // Set the cursor to top left
+  ofr.setCursor(12, 10);
+  ofr.setFontSize(30); // set font size 
+  ofr.printf("FermWatch32\n");
+
+  ofr.setCursor(115, 160); // was 105 145 CYD
+  ofr.setFontSize(40); // set font size 
+  ofr.printf("version  ");
+  ofr.printf(version);
+  
+  ofr.setFontColor(bronze, TFT_BLACK);
+  ofr.setCursor(25, 110);
+  ofr.setFontSize(80); // set font size
+  ofr.printf("FermWatch32\n");
+  delay(2000); // view screen
+
+  // Yeast budding  A grey ellipse origin at (45, 80) with horizontal radius of 35, and vertical radius of 30
+  tft.fillEllipse(45, 80, 35, 30, yeast); // mother
+  delay(2500);
+  tft.fillEllipse(100, 70, 20, 15, yeast); //  daughter
+
+  ofr.setFontColor(TFT_SILVER, TFT_BLACK);
+  ofr.setCursor(40, 190);
+  ofr.setFontSize(TIT); // set font size
+  ofr.printf("Look for FermWatch32_AP");
+
+  delay(2000); 
+
+  // Version
+  Serial.println(F(""));
+  Serial.print(F("This is FermWatch32 VERSION : ")); Serial.println(F(version));
+  Debugln("");
+  
+  // ******************************************************************************************************* 
+  // WiFiManager------------------------------------------------------------------------
+
   // Remove any previous network settings  for testing
- // 1.2a 
-  // wm.resetSettings(); // wipe settings every time commented out for production
-
+  // wm.resetSettings(); // wipe settings every time REMEMBER for the PRODUCTION version to comment out! !!!!!!!!!!!!!!!!
+  
   // set config save notify callback
-  wm.setSaveConfigCallback(saveConfigCallback); // save the params when using the /param page took this out no effect
-  //  wm.setDebugOutput(false); // disable  wm serial print debug messages
-
-  // wm.setConfigPortalTimeout(60); // timeout if blocked too long and then autoconnect
-
-  // set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wm.setSaveConfigCallback(saveConfigCallback); // save the params
+  // Set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
   wm.setAPCallback(configModeCallback);
+  // set a 3 minute timeout so the ESP doesn't hang waiting to be configured, for instance after a power failure,
+  wm.setConfigPortalTimeout(180); // timeout if blocked too long and then the autoconnect should return Do a power cycle whenever you want to reconfigure.
 
-  // wm.setPreSaveConfigCallback(saveConfigCallback); // see if this keeps the settings not in dronerobot version
-
-  //--- additional Configs params ----------------------------------------------------------------------------------------------------------------------------------------
-
-  // Text box (String) BF Base64 encoded Authorisation Basic 
-  WiFiManagerParameter custom_text_box("BFAuth_text", "Enter YOUR Brewfather Authorisation Basic - 124 characters Base64 encoded", Auth_B, 125); // changed to 124 +1 125 == max length 125+1
-
-  // Text box (Number) for NTP Client UTC offset in seconds
-  char convertedValue[5];
+  // Text box (String) BF Base64 encoded Authorisation Basic
+  WiFiManagerParameter custom_text_box("BFAuth_text", "Enter the Base64 BF Authorization key or leave blank if BF not used", Auth_B, 126); // 125 == max length 125+1
+  
+  /* // Text box (Number) for NTP Client UTC offset in seconds
+  char convertedValue[6];
   sprintf(convertedValue, "%d", UTC_offset); // Need to convert to string to display a default value.
-
-  WiFiManagerParameter custom_text_box_num("UTC_num", "UTC Offset time (seconds)", convertedValue, 5); // 5 == max length
-
-  // Text box (Number)
-  char convertedValue2[6];
-  sprintf(convertedValue2, "%d", BF_updateInt); // Need to convert to string to display a default value.
-
-  WiFiManagerParameter custom_text_box_num2("BF_num", "Brewfather Update time (milliseconds)", convertedValue2, 6); // 6 == max length
-
-  // Check Box NEED default set for unchecked http://pdacontrolen.com/introduction-library-wifimanager/
-  //  tried two different ways same result achieved  // the earlier version of WM doesn't have , WFM_LABEL_AFTER
-  const char *customHtml;
-  if (Plato)
-  {
-    customHtml = "type=\"checkbox\" checked";
-  }
-  else
-  {
-    customHtml = "type=\"checkbox\"";
-  }
-  // char customhtml[24] = "type=\"checkbox\"";
-  // const char _customHtml_checkbox[] = "type=\"checkbox\"";
-  WiFiManagerParameter Plato_chk("Plato_bool", "Check for Gravity in Plato. Default is SG", "T", 2, customHtml, WFM_LABEL_AFTER);
-
-  char customhtml2[24] = "type=\"checkbox\"";
-  if (Fahr)
-  {
-    strcat(customhtml2, " checked");
-  }
-  WiFiManagerParameter Fahr_chk("Fahr_bool", "Check for Temperature in Fahr. Default is Celsius", "T", 2, customhtml2, WFM_LABEL_AFTER);
-
-  char *customHtml3;
-  if (Temp_Corr)
-  {
-    customHtml3 = "type=\"checkbox\"";
-  }
-  else
-  {
-    customHtml3 = "type=\"checkbox\"checked";
-  }
-  WiFiManagerParameter Temp_chk("Temp_Corr_bool", "Check for iSpindel Gravity Temperature Adjustment.     Default is none.", "T", 2, customHtml3, WFM_LABEL_AFTER); // label after checkbox
-
+  WiFiManagerParameter custom_text_box_num("UTC_num", "UTC Offset time (seconds)", convertedValue, 6); // 6 == max length */
+  
+  // Text box (String) for Target IP address 
+  WiFiManagerParameter custom_text_box2("Target_IP_text", "Enter Target IP Address", Target_IP, 16); // 16 == max length
+  
   // WiFiManagerParameter custom_html("<br>"); // line break separator between the check boxes
 
   // add all your parameters here
-  wm.addParameter(&custom_text_box);
-  wm.addParameter(&custom_text_box_num);
-  wm.addParameter(&custom_text_box_num2);
-  wm.addParameter(&Plato_chk);
-  wm.addParameter(&Fahr_chk);
-  wm.addParameter(&Temp_chk);
-
-  // just the wifi not in  this version wm
-  std::vector<const char *> menu = {"wifi"}; // only show WiFi on the menu
+  wm.addParameter(&custom_text_box); // Auth_B
+  // wm.addParameter(&custom_text_box_num); // UTC_offset
+  wm.addParameter(&custom_text_box2); // Target_IP
+  
+  // just show the wifi not the other options
+  std::vector<const char *> menu = {"wifi"}; // only show WiFi on the menu not the other stuff
   wm.setMenu(menu);                          // custom menu, pass vector
 
   // set dark theme
   wm.setClass("invert");
 
-  // set default static ip  dns  IPAddress(192,168,0,1  if you have more that one FermWatch make sure you use different IP addresses!
-  wm.setSTAStaticIPConfig(IPAddress(192, 168, 0, 42), IPAddress(192, 168, 0, 1), IPAddress(255, 255, 255, 0), IPAddress(192, 168, 0, 1)); // set static ip,gw,sn,dns
+  // set static ip  dns  IPAddress(192,168,0,1  if you have more than one FermWatch make sure you use different IP addresses!
+  
+  //-------------------------*** AP naming also needs to be unique to each FermWatch------------------------------------------------
+
+  wm.setSTAStaticIPConfig(IPAddress(192, 168, 0, 92), IPAddress(192, 168, 0, 1), IPAddress(255, 255, 255, 0), IPAddress(192, 168, 0, 1)); // set static ip,gw,sn,dns
   wm.setShowStaticFields(true);                                                                                                           // force show static ip fields
-  wm.setShowDnsFields(true);                                                                                                              // force show dns field always
-
+  wm.setShowDnsFields(true);     
+  
   if (forceConfig)
-  // Run if we need a configuration
+    // Run if we need a configuration
   {
-    if (!wm.startConfigPortal("FermWatch_AP", "fermwatch")) // on demand
+    if (!wm.startConfigPortal("FERMWATCH32_AP", "")) // no pwd for testing
     {
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.setCursor(20, 190);
-      tft.println("Failed to Connect - Try Again");
-
-      debugln("failed to connect and hit timeout");
+      Serial.println("failed to connect and hit timeout");
       delay(3000);
-      // reset and try again, or maybe put it to deep sleep
+      //reset and try again, or maybe put it to deep sleep
       ESP.restart();
       delay(5000);
     }
-    shouldSaveConfig = true; // not sure which one will work try this one  https://forum.arduino.cc/t/wifi-manager-custom-parameters-are-not-saved-in-memory-via-ondemand-portal/921063/4
   }
   else
   {
-    if (!wm.autoConnect("FermWatch_AP", "fermwatch"))
+    if (!wm.autoConnect("FERMWATCH32_AP", ""))
     {
-      debugln("Auto Connect failed to connect and hit timeout");
+      Serial.println("failed to connect and hit timeout");
       delay(3000);
       // if we still have not connected restart and try all over again
       ESP.restart();
       delay(5000);
     }
   }
-
-  // If we get here, we are connected to the WiFi 
-
-  digitalWrite(LED_BUILTIN, OUTPUT);
-  debugln("");
-  debug("WiFi connected  ");
-  debug("IP address: ");
-  debugln(WiFi.localIP());
-
-  // Lets deal with the user config values
-  // Copy the string value
-  strncpy(Auth_B, custom_text_box.getValue(), sizeof(Auth_B));
-  debug("BF Authorisation Basic: ");
-  debugln(Auth_B);
-
-  // Convert the number values
-  UTC_offset = atoi(custom_text_box_num.getValue());
-  debug("UTC Offset: ");
-  debugln(UTC_offset);
-
-  BF_updateInt = atoi(custom_text_box_num2.getValue());
-  debug("BF update Interval: ");
-  debugln(BF_updateInt);
-
-  // Handle the Plato bool value
-  Plato = (strncmp(Plato_chk.getValue(), "T", 1) == 1); // was  == 0    1 sets default to SG 
-  debug("Plato: ");
-  if (Plato)
-  {
-    debugln("true");
-  }
-  else
-  {
-    debugln("false");
-  }
-
-  // Handle the Fahr bool value
-  Fahr = (strncmp(Fahr_chk.getValue(), "T", 1) == 1); // was ==  0      1 sets default to C 
-
-  debug("Fahr: ");
-  if (Fahr)
-  {
-    debugln("true");
-  }
-  else
-  {
-    debugln("false");
-  }
-
-  // Handle the Temp_Corr bool value
-  Temp_Corr = (strncmp(Temp_chk.getValue(), "T", 1) == 1); // was ==  0  set default to NO temperature correction
-
-  debug("Temp Corr: ");
-  if (Temp_Corr)
-  {
-    debugln("true  ");
-  }
-  else
-  {
-    debugln("false  ");
-  }
-
-  // save the custom parameters to FS
-  if (shouldSaveConfig) // saveConfigFile();
-  {
-    saveConfigFile();
-  }
-
-  timeClient.begin(); // NTP
-
-  //-----------------------TFT config messages
-
-  tft.fillScreen(Backgnd);
-  tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-  tft.setCursor(20, 40);
-  tft.println("Reconfigure Settings? ");
-  tft.setCursor(20, 80);
-  tft.println("Press reset."); // Single press reset seems to work.
-  tft.setCursor(20, 120);
-  tft.println("Select FermWatch_AP");
-  tft.setCursor(20, 160);
-  tft.println("Password fermwatch ");
-  // tft.setCursor(40,200);
-  // tft.println("Change to suit");
-
-  // x = 320, y = 240;  //screen size x horiz y vert swapped for landscape!!
-  // draw inner backgnd
-
-  delay(5000); // view screen
-
-  tft.fillScreen(Backgnd);
-  tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
-  tft.setTextColor(bronze, TFT_BLACK);
-  tft.setCursor(20, 180);
-  tft.println("WiFi Connected");
-  tft.setCursor(12, 210);
-  tft.println("FermWatch IP " + WiFi.localIP().toString());
-  debugln("");
-  debugln("FermWatch IP  " + WiFi.localIP().toString());
-
-  // Start the broker
-  debugln("Starting MQTT broker");
-  tft.setCursor(20, 30);
-  tft.println("Starting MQTT broker...");
-  tft.setCursor(20, 60);
-  tft.println("If no BPL data shown");
-  tft.setCursor(20, 90);
-  tft.println("Check that the BPL MQTT");
-  tft.setCursor(20, 120);
-  tft.println("settings are correct");
-  tft.setCursor(20, 150);
-  tft.println("or try resetting BPL");
-  debugln("If no BPL data shown check BPL MQTT Settings correct or try resetting BPL");
-
-  tft.setTextColor(TFT_SILVER, TFT_BLACK);
-  delay(5000); // to allow the screen to be viewed
-
-  myBroker.init();
-  // uncomment the next line to check blanking of custom fonts
-  // tft.fillScreen(TFT_BLUE);
-  /*
-   * Subscribe to anything bpl42 works
-   */
-  myBroker.subscribe("bpl42"); // might need to restrict to BPL in future?
-
-  // Get data from Brewfather API   mostly code from
-  //
-  // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientInsecure/WiFiClientInsecure.ino
-  // and for the JSON
-  // https://github.com/witnessmenow/arduino-sample-api-request/blob/master/ESP8266/HTTP_GET_JSON/HTTP_GET_JSON.ino
-  // and  should not be in setup so that the batch ID can be available elsewhere
-
-  debugln("\nStarting connection to server...");
-  client.setInsecure(); // the magic line, use with caution??? no certificate
-  if (!client.connect("api.brewfather.app", 443))
-  {
-    debugln("BF Connection Failed!");
-  }
-  else
-  {
-    debugln("Connected to BF API !");
-
-    // Send HTTP request using the html from Postman converted using  https://davidjwatts.com/youtube/esp8266/esp-convertHTM.html
-    // base 64 encoded ASCII to Linux URLsafe encoding   https://www.base64encode.org/ suggest paste result in the line below
-    //
-
-    // Make a HTTPS request:
-    client.print("GET https://api.brewfather.app/v2/batches/?include=measuredOg,recipe.fgEstimated&status=Fermenting HTTP/1.0\r\n");
-
-    client.println(String("Host: ") + "api.brewfather.app");
-    String A1 = "Authorization: Basic ";
-    String auth = A1 + Auth_B;
-    client.println(auth);
-
-    client.println("Connection: close\r\n\r\n");
-    client.println();
-
-    while (client.connected())
-    {
-      String line = client.readStringUntil('\n');
-      if (line == "\r")
-      {
-        // debugln("Authorised. Batch headers received");
-        break;
-      }
-    }
-    // // Debug To check if there are incoming bytes available
-    // // from the server, read them and print them: this lot under needs commenting out so the Json will work and vice versa
-    //   while (client.available()) {
-    //     char c = client.read();
-    //     Serial.write(c); // to print
-    //     // save possibly String buffer =Serial.readString();
-    //   }
-    //   //client.stop(); moved down
-    //   // }
-
-    // Use the ArduinoJson Assistant to calculate this:  https://arduinojson.org/v6/assistant/
-    //  used stream input code
-    //  size_t inputLength;
-
-    StaticJsonDocument<448> doc; // 512 works 448 works 384 works
-  // 1.2 made 448
-    DeserializationError error = deserializeJson(doc, client);
-
-    if (error)
-    {
-      Serial.print(F("deserializeJson() Brew failed: "));
-      Serial.println(error.f_str());
-      tft.fillScreen(TFT_PURPLE);
-      tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac); // clear startup/last screen
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.setTextFont(2);
-      tft.setCursor(12, 40);
-      tft.println("Failed to Connect to BF");
-      tft.setCursor(12, 70);
-      tft.println("       - Try Again");
-      tft.setCursor(12, 150);
-      tft.println("    Check Auth Key");
-      tft.setCursor(12, 180);
-      tft.println("    entered properly");
-      tft.setTextFont(1);
-      delay(20000);
-      return;
-    }
-
-    JsonObject root_0 = doc[0];
-    const char *root_0_id = root_0["_id"]; // "LXXXXXXXXXXXXXXXXXXXXXXXXXXXXXLUL"
-    // const char* root_0_name = root_0["name"]; // "Batch"
-    int root_0_batchNo = root_0["batchNo"]; // 375
-    // const char* root_0_status = root_0["status"]; // "Fermenting"
-    // const char* root_0_brewer = root_0["brewer"]; // "Peter "
-    // long long root_0_brewDate = root_0["brewDate"]; // 1646398800000
-
-    const char *root_0_recipe_name = root_0["recipe"]["name"];         // "2022 Skinners Lushingtons 2.1"
-    float root_0_recipe_fgEstimated = root_0["recipe"]["fgEstimated"]; // 1.009
-    float root_0_measuredOg = root_0["measuredOg"];                    // 1.039
-
-    strcpy(batch_id, root_0_id); // use copy string to get the batch ID into the global variable batch_id
-    // batch_id = root_0_id;
-    debugln(batch_id);         // Serial.printf(root_0_id);
-    batch_No = root_0_batchNo; // int
-    Serial.print("Batch Number : ");
-    Serial.println(batch_No);
-    brew = root_0_recipe_name;
-    Serial.println(brew);
-    SGogy = root_0_measuredOg;
-    FGEst = root_0_recipe_fgEstimated;
-
-    // // debug
-    client.stop();
-  }
-  // // Extract values for debug
-  //   // debugln(F("From Brewfather API:"));
-  //   Serial.printf("Batch ID  = %s\n", batch_id);
-  //   // debug("Status:   ");
-  //   // debugln(root_0_status);
-  //   // debug("Batch No:  ");
-  //   // debugln(batch_No);
-  //   // Serial.printf("Brew  = %s\n", brew);
-
-  if (Plato == true)
-  {
-    float OGPlato = ((259 - (259 / SGogy)));
-    Serial.printf("Brewfather OG Plato  =  %.1f deg P\n", OGPlato);
-    tft.setCursor(20, 200);
-    tft.print("Plato Set"); // tft.println(OGPlato,1);
-  }
-  else if (Plato == false)
-  {
-    Serial.printf("Brewfather OG SG  =  %.4f deg\n", SGogy);
-    Serial.print("\n");
-  }
-
-  // initialise border
-  tft.fillScreen(TFT_GREY);
-  tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac); // clear startup/last screen
-  tft.setTextColor(bronze, TFT_BLACK);
-  tft.drawCentreString("Connected to ...   ", 160, 40, 2);
-  tft.drawCentreString("Brewfather API", 160, 70, 2);
-  tft.setTextFont(1);
-  tft.drawCentreString("Waiting for batch  ", 160, 100, 2);
-  tft.drawCentreString("to update ...", 160, 130, 2);
-
-  tft.setTextColor(TFT_SILVER, TFT_BLACK);
-
-  tft.setTextFont(1); // 
-
-  // tft.loadFont(AA_FONT_SMALL);
-  tft.setCursor(12, 180);
-  tft.print("Batch : ");
-  tft.println(batch_No);
-
-  if (brew.length() > 26) // greater than 26 characters print small
-  {
-  tft.setCursor(10, 210);
-  tft.loadFont(AA_FONT_SMALL);
-  tft.println(brew);
-  }
-  else if (brew.length() <= 25) // 36 character limit before wrapping
-  {
-  tft.setCursor(12, 210);
-  tft.println(brew);
-  }
-  tft.unloadFont(); // Remove the AA font to recover memory used
-  delay(3000);   // delay(3000); // delay the screen till font unloaded
+    
+  // If we get here, we are connected to the WiFi
+  Debugln("");
+  Debug("WiFi connected  ");
+  Debug("IP address : ");
+  Debugln(WiFi.localIP());
   
-  tft.setTextFont(1);
+  // Get the UTC offset
+  getUTCOffset();
 
-} // end of setup
+  // Copy the string values
+  strncpy(Auth_B, custom_text_box.getValue(), sizeof(Auth_B));
+  Debug("BF Authorisation Basic Input: ");
+  Debugln(Auth_B);  
+      
+  strncpy(Target_IP, custom_text_box2.getValue(),sizeof(Target_IP) );
+  Debug("Forwarding Target IP Address: ");
+  Debugln(Target_IP);
+  Target_Broker = Target_IP;
+  Debug("Target Broker :  ");Debugln(Target_Broker);
 
-void loop()
-{
-  drd->loop(); // drd
+  /* // Convert the number values
+  UTC_offset = atoi(custom_text_box_num.getValue());
+  Debug("UTC Offset: ");
+  Debugln(UTC_offset); */
+    
+  // Save the custom parameters to Preferences
+  if (shouldSaveConfig)
+  {
+    saveAuthToPreferences();
+    saveUTCToPreferences();
+    saveTargetIPToPreferences();
+  }
+  
+  // check
+  retrieveAuthFromPreferences(); //to retrieve Auth_B
+  Debug("Auth_B from Prefs  "); Debugln(Auth_B);
+  
+  retrieveUTCFromPreferences();
+  Debug("UTC offset from Prefs  "); Debugln(UTC_offset);
+  
+  retrieveTargetIPFromPreferences();
+  Debug("Forwarding Target IP from Prefs  "); Debugln(Target_IP);
+  Debugln("");
 
+  /* // check status of BF using whether the key was entered or not
+  if (Auth_B[0] == 0)
+  {
+    (brewF == false); // false when using GM otherwise for BF enter the proper Authorization
+    Debugln("");
+    Debug("brewF false should = 0    ");
+    Debug("so ");
+    Debug(brewF); // brewF =1??
+    Debugln("  Brewfather not set");
+  } */
+  
+  // Purple combo here preferences retrieved
+  digitalWrite(CYD_LED_RED, LOW);    // Turn on red
+  digitalWrite(CYD_LED_GREEN, HIGH); // Turn off green
+  digitalWrite(CYD_LED_BLUE, LOW);   // Turn on blue
+  delay(2000); // view screen
+
+  // WiFi Connected messages
+  tft.fillScreen(TFT_ORANGE);
+  tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac);
+  
+  ofr.setFontSize(TIT); // set font size
+  ofr.setCursor(20, 20);
+  ofr.printf("WiFi Connected");
+  ofr.setCursor(20, 45);// was 20,50
+  ofr.printf("FermWatch IP  ");
+  ofr.setFontColor(TFT_SILVER,TFT_BLACK);
+  ofr.printf(WiFi.localIP().toString().c_str()); // https://forum.arduino.cc/t/how-to-manipulate-ipaddress-variables-convert-to-string/222693/15
+
+  Debugln("");
+  Debug("FermWatch IP  ");
+  Debugln(WiFi.localIP().toString());
+
+  // MQTT Start the broker ----------------------------------------------------------------
+  // subscribe to topic = bpl, topic2 = bplfw, and topic3 = gm
+  broker.begin(); //
+  mqttbpl.setCallback(onPublishA);
+  mqttbpl.subscribe(topic);
+  mqttbplfw.setCallback(onPublishA);//rec
+  mqttbplfw.subscribe(topic2);
+  mqttgm.setCallback(onPublishB);
+  mqttgm.subscribe(topic3);
+  
+  // Sender Subscribe to  topic2 bplfw
+  mqtt_sender.subscribe(topic2);
+    
+  // Start the broker messages
+  // Debugln("Starting MQTT broker");
+  ofr.setFontColor(bronze, TFT_BLACK);
+  ofr.setCursor(20, 70);
+  ofr.printf("Starting FW MQTT broker...");
+  ofr.setCursor(20, 110);
+  ofr.printf("If no data shown check that");
+  ofr.setCursor(20, 140);
+  ofr.printf("the BPL/GM MQTT IP settings");
+  ofr.setCursor(20, 170);
+  ofr.printf("are correct or try resetting");
+  ofr.setCursor(20, 200);
+  ofr.printf("or prompting BPL/GM");
+  
+   Debugln("If no BPL data shown check BPL/GM MQTT IP Settings match FermWatch or try resetting BPL/GM");
+  tft.setTextColor(TFT_SILVER, TFT_BLACK);
+
+  delay(2000); // to allow the screen to be viewed
+
+  // cyd2usb setup touch from
+  // https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/Examples/Basics/2-TouchTest/2-TouchTest.ino
+  // needs -DUSE_HSPI_PORT  in platformio.ini
+  // Start the SPI for the touch screen and init the TS library
+  mySpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
+  ts.begin(mySpi);
+  ts.setRotation(1);
+
+  // Start the tft display and set it to black
+  tft.init();
+  tft.setRotation(1); //This is the display in landscape
+
+  // Clear the screen before writing to it
+  tft.fillScreen(TFT_BLACK);
+  /* 
+  //CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+  // Perform calibration routine
+  // calibrateTouchScreen(); // Perform calibration uncomment for testing
+  
+  float xCalM = 0.09;  // Typical  calibration values
+  float xCalC = -18.75;
+  float yCalM = 0.07;
+  float yCalC = -18.16; */
+
+  // if already calibrated skip calibration steps  
+  preferences.begin("calibration", false);
+
+  if (checkCalibrationInPreferences()) {
+    isCalibrated = preferences.getBool("isCalibrated", false); // Retrieve isCalibrated flag from Preferences
+    Serial.print("Calibration found in Preferences 1 is true ");Serial.println(isCalibrated);
+    useCalibrationData();
+  // Print the stored data from Preferences
+    printCalibrationData();
+
+   } else {
+    calibrateTouchScreen(); // Perform calibration
+    saveCalibrationToPreferences(); // Save calibration and isCalibrated flag to Preferences
+    Serial.println("Calibration performed and saved to Preferences");
+    // small delay between cali and menu o prevent double click
+    delay(200);
+  }
+
+  if (isCalibrated){
+  // tft.fillScreen(TFT_BLACK);
+  // tft.setTextColor(TFT_PURPLE,TFT_BLACK);
+  // tft.setTextSize(2);
+  // tft.setCursor (12,15);
+  Serial.print(  "Calibrated");
+  }
+     
+  // display the config screen
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_YELLOW,TFT_BLACK);
+  tft.setTextSize(1);
+  tft.setCursor (12,15);
+  tft.println("Select Boxes Touch OK to save and DONE to continue");
+  
+ // show the saved config state by highlighted buttons
+      // Call function to retrieve configuration
+      getConfigFromPreferences(); 
+      // Render buttons based on retrieved settings
+      button1.render(brewF); 
+      button2.render(FV);  
+      button3.render(GM);
+      button4.render(wmWIPE); 
+      button5.render(Temp_Corr); 
+      button6.render(Fahr);
+      button7.render(Plato);
+      button8.render(Rec);//rec
+      button9.render(BF_Poll);
+
+    // renders blank buttons no status  for OK and DONE
+    button10.render(tft);button11.render(tft);
+      
+  /*  Blank buttons for testing
+   button1.render(tft);button2.render(tft); button3.render(tft);button4.render(tft);button5.render(tft);
+  button6.render(tft); button7.render(tft); button8.render(tft);button9.render(tft);
+  button10.render(tft);button11.render(tft); */
+  
+  // goto Loop to process other functions that were in setup  
+  
+} // end setup
+
+unsigned long lastFrame = millis();
+
+// LOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP
+
+void loop() 
+{ 
+  // MQTT Broker ---------------------------------------------------------------------
+    broker.loop();
+    mqttgm.loop();  // gravmon
+    mqttbpl.loop(); // BrewPiLess
+    mqttbplfw.loop(); // rec bplfw when in Receiver mode
+  
+  
   unsigned long currentTime = millis(); // original needed for BF loop timing
 
-  // https://github.com/RalphBacon/BB5-Moving-to-a-State-Machine/blob/main/Sketches/3-NonBlocking.ino
-  // Refresh NTP Time every 1 sec
-  void updateNTP();
-  {
-    static unsigned long NTPMillis = millis();
-    if (millis() - NTPMillis >= 1000) // 1 sec
-    {
-      timeClient.update();
-      tft.setCursor(214, 12);
-      tft.println((timeClient.getFormattedTime())); //
-      NTPMillis = millis();                         // We must reset the local millis variable
-    }
-  }
+  // Setup and Configuration Touch Screen stuff
+  if (!configCompleted) 
+  {     // heap initiated reset bypasses config screen
+        getrstDONEPrefs();
+        ScreenPoint sp;
+        // Check if DONE button is pressed or rstDONE from prefs = true to cater for a heap initiated reset
+        if ((button11.isClicked(sp)) || (rstDONE)) {
+         // Debug(" rstDONE = 1 ? "); Debugln(rstDONE);
+          getConfigFromPreferences(); // get the values                    
+        // get the BF Batch details and run the screens before starting the main program screen cycles
+                          
+          if (brewF)
+          {
+            getBFBatch (); // get the batch ID(s)
+            delay (3000); // view the screen
+            updateBFData(); // get the Batch 1 details   rest of the updates in the loop later 
+            if (FV)
+            {
+            updateBFData2(); // Batch 2 again flag to switch
+            }
+            
+          }
+          // Forwarding bplfw all the time except when Receiving
+          
+          // this is the IP address and port for the target mqtt broker 
+          if(Rec == false)// if Rec is true prevent publishing bplfw from the receiver
+          {
+          mqtt_sender.connect(Target_Broker, PORT, 100);// try keep alive 50 secs increased to 100
+          } else
+          {
+          //Receiving bplfw 
+          Debug(" Receiving Source :  ");Debugln(Source);//rec
+          Debugln("");  
+          }
+          
+          // Get the UTC offset
+          getUTCOffset(); 
+          timeClient.begin();
 
-  // Refresh BF Fermentations & iSpindel details every 3 minutes
-  // using the batch ID
+          setBF_PollInterval(); // Call function to set BF GET updates not tested 
+                  
+          // reset rstDONE to false to cater for an ordinary reset
+          SetrstDONEFalsePrefs();
 
-  /* This is my event_2 */
-  if (currentTime - previousTime_2 >= eventTime_2_BF)
-  {
-
-    debugln("\nStarting connection to server...");
-    client.setInsecure(); // the magic line, use with caution??? no certificate
-
-    if (!client.connect("api.brewfather.app", 443))
-      debugln("Connection to BF Batch Failed!"); // this would likely be due to an internet failure
-    else
-    {
-      debugln("Connecting to BF Batch "); //
-
-      // Make a HTTPS request:
-      // debug only
-      debug("Batch ID   ");
-      debugln(batch_id); // does this global variable get here?
-      String S1 = "GET https://api.brewfather.app/v2/batches/";
-      String S2 = "/readings/last HTTP/1.1"; //
-      String last = S1 + batch_id + S2;      // this now works!
-      client.println(String(last));          // the last ie the latest readings
-      client.println(String("Host: ") + "api.brewfather.app");
-      String A1 = "Authorization: Basic ";
-      String auth = A1 + Auth_B;
-      client.println(auth);
-
-      client.println("Connection: close");
-      client.println();
-
-      while (client.connected())
-      {
-        String line = client.readStringUntil('\n');
-        if (line == "\r")
-        {
-          // debugln("Batch latest readings received");
-          break;
+        configCompleted = true;
         }
-      }
-      // for debugging
-      // // if there are incoming bytes available from the server, read them and print them:
-      // //  this lot under needs commenting out so the Json will work
-      //   while (client.available()) {
-      //     char c = client.read();
-      //     Serial.write(c); // to print
-      //     // save possibly String buffer =Serial.readString(); //?
-      //   }
-      // Serial.print(batch_id);//debug
-
-      StaticJsonDocument<320> batch; // changed from the calculated 192 to 256 to get it to work try 320
-      DeserializationError error = deserializeJson(batch, client);
-
-      // added error messages likely due to not entering the proper Authorisation string
-      if (error)
+              // Other configuration logic
+                // ScreenPoint sp;
+              /* // limit frame rate
+              while((millis() - lastFrame) < 20);
+              lastFrame = millis();
+              */
+      if (ts.touched()) 
       {
-        debug(F("deserializeJson() Batch failed: "));
-        debugln(error.f_str());
-        client.stop();
-        tft.fillScreen(TFT_PURPLE);
-        tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac); // clear startup/last screen
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.setTextFont(2);
-        tft.setCursor(12, 40);
-        tft.println("Failed to Connect to BF");
-        tft.setCursor(12, 70);
-        tft.println("       - Try Again");
-        tft.setCursor(12, 150);
-        tft.println("    Check Auth Key");
-        tft.setCursor(12, 180);
-        tft.println("    entered properly");
-        tft.setTextFont(1);
-        delay(20000);
-        return;
-      }
-      // NB any float int etc used here makes it local not GLOBAL
-      // const char* comment = batch["comment"]; // nullptr
-      pressure = batch["pressure"]; // 4
-      // long long time = batch["time"]; // 1644817884597
-      int rssi = batch["rssi"];     // -69
-      String id = batch["id"];      // "ISPINDELPCBSG"
-      float angle = batch["angle"]; // 29.20479
-      // const char* type = batch["type"]; // "iSpindel"
-      float battery = batch["battery"]; // 3.889468
-      iSp_sg = batch["sg"];             // 1.0088  removed the float from the front
-      Itemp = batch["temp"];            // 4.1
+        TS_Point p = ts.getPoint();
+        sp = getScreenCoords(p.x, p.y);
+        // call a function with 'sp' and relevant button and settings info
+        handleButtonInteraction(sp, button1, brewF, "brewF");
+        handleButtonInteraction(sp, button2, FV, "FV");
+        handleButtonInteraction(sp, button3, GM, "GM");
+        // handleButtonInteraction(sp, button4, wmWIPE, "WIPE"); // not saved
+        handleButtonInteraction(sp, button5, Temp_Corr, "Temp_Corr");
+        handleButtonInteraction(sp, button6, Fahr, "Fahr");
+        handleButtonInteraction(sp, button7, Plato, "Plato");
+        handleButtonInteraction(sp, button8, Rec, "Receive");
+        handleButtonInteraction(sp, button9, BF_Poll, "BF_Poll");
+        
+        // these are different use buttons
+        // handleButtonInteraction(sp, button10, save_OK, "OK");
+        // handleButtonInteraction(sp, button11, PS, "DONE");
 
-      // calculate % complete
+        // WIPE All Settings
+        if (button4.isClicked(sp)) {
+          // If the button is touched, initiate debounce logic
+          if ((millis() - lastDebounceTime) > debounceDelay) {
+            // Capture the current time for debounce comparison
+            lastDebounceTime = millis();
+        // Toggle the button state
+            buttonState = !buttonState;
+            
+            // Check if the state has changed
+            if (buttonState != lastButtonState) {
+              lastButtonState = buttonState; // Update the last state
+              
+              // Update wmWIPE based on the buttonState
+              wmWIPE = buttonState;
+              // saveConfigToPreferences(); ddon't save as intended to be a 'one off'
+              // clearPreferences(); // wipe auth, config and calibration
+              wm.resetSettings(); 
+              Debug("WM WIPE ");
+              Debugln(wmWIPE);
+            }
+          }
+        }  
 
-      float GPtot = ((SGogy - 1) - (FGEst - 1)) * 1000;          // expected gravity points to ferment in SG eg 40-10 = 30
-      float PG_now = ((iSp_sg - 1) * 1000 - (FGEst - 1) * 1000); // say 39 - 10 = 29
-      float Prog = (((1 - (PG_now) / GPtot)) * 100);             // 29 / 30 = %
-                                                                 // debugln(iSp_sg); debugln(FGEst); debugln(PG_now); debugln(GPtot ); debugln(Att);
-                                                                 //
-                                                                 //  Apparent Attenuation progressive
-                                                                 // App_Att = (((SGogy-1) - (iSp_sg-1))/(SGogy-1))*100; // 40 - say 20  =20/40 = 50% * by 100
+              
+        // OK to save 
+        if (button10.isClicked(sp)) {
+          // If the button is touched, initiate debounce logic
+          if ((millis() - lastDebounceTime) > debounceDelay) {
+            // Capture the current time for debounce comparison
+            lastDebounceTime = millis();
+            
+            // Toggle the button state
+            buttonState = !buttonState;
+            
+            // Check if the state has changed
+            if (buttonState != lastButtonState) {
+              lastButtonState = buttonState; // Update the last state
+              
+              // Update OK based on the buttonState
+              save_OK = buttonState;
+              saveConfigToPreferences();
 
-      // Extract values for diaganostics
-      debugln();
-      debug(F("Batch:   "));
-      debugln(batch_id);
-      debug("iSpindel Name:   ");
-      debugln(id);
-      Serial.printf("Pressure =  %.1f PSI\n", pressure);
-      Serial.printf("SG       =  %.5f deg.\n", iSp_sg); // .4 decimal places
-      Serial.printf("Battery  =  %.2f V\n", battery);
-      Serial.printf("Angle    =  %.2f deg.\n", angle);
-      Serial.printf("ITemp    =  %.1f C\n", Itemp);
-      // Progress %
-      Serial.printf("Present Progress = %.2f%s\n", Prog, " %"); // %.2f%s\n", adjABV,"%"
-
-      // tft display mostly iSpindel and derived functions-----------------------------------------------------------------------------------------------------
-      // wipe the screen innerbac and update
-      // tft.fillScreen(TFT_VIOLET); see if heating cooling etc is maintained
-      tft.fillRoundRect(4, 4, 312, 232, 2, InnerBac); // clear startup/last screen
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setTextFont(1);
-      tft.setCursor(12, 12);
-      // tft.print("iSpindel");
-      // compare iSp connection status https://docs.arduino.cc/built-in-examples/strings/StringComparisonOperators
-      if (id == "manual")
-      {
-        debugln("iSpindel not attached or manual reading(s) entered!");
-        tft.setCursor(12, 12); // was 130,12
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.print("Manual      "); // indicates that a manual reading has been input to BF e.g. pressure rest of fields,  last values received 900s BF cycle
-        // or the fermenting bach has been kegged, BF status changed to conditioning and the values are no longer valid
-      }
-      tft.setTextColor(TFT_SILVER, TFT_BLACK); // make sure time is not red
-      tft.setCursor(214, 12);                  // stays the same
-      tft.println((timeClient.getFormattedTime()));
-
-      // mostly fixed text
-      tft.setTextColor(TFT_PINK, TFT_BLACK);
-      tft.setCursor(12, 12); // was 12,40
-      tft.println(id);       // iSpindel name
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setCursor(12, 40); // was 12,70
-      tft.println("RSSI");
-      tft.setCursor(80, 40); // was 80,70
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.println(rssi);
-      tft.setCursor(12, 100); // same
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.println("iSp Temp.");
-      tft.setCursor(135, 40); // was 135,70
-      tft.println("Battery");
-      tft.setCursor(240, 40); // was 240,70
-      tft.setTextColor(TFT_GOLD, TFT_BLACK);
-      tft.print(battery, 2);
-      tft.println(" V");
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setCursor(185, 100); // same
-      tft.println("Angle");
-      tft.setCursor(50, 160); // same
-      tft.println("PSI");
-      tft.setCursor(140, 160); // same
-      tft.println("Present Grav.");
-
-      tft.setFreeFont(&Orbitron_Medium_18);
-      tft.fillRect(10, 175, 245, 35, TFT_BLACK); // background for custom font
-
-      // iSpindel Temperature
-      tft.setTextColor(TFT_GOLD, TFT_BLACK);
-      if (Fahr == true)
-      {
-        float iSpTemp = ((Itemp * 1.8) + 32.0);
-        Serial.printf("iSpindel Temp  =  %.1f F\n", iSpTemp);
-        tft.setCursor(10, 150); //
-        tft.println(iSpTemp, 1);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.setCursor(130, 150); // was 125,150
-        tft.print("F");
-        tft.setTextFont(1);
-        tft.setCursor(117, 120);
-        tft.print("o");
-      }
-      else if (Fahr == false)
-      {
-        Serial.printf("iSpindel Temp  =  %.1f C\n", Itemp);
-        tft.setFreeFont(&Orbitron_Medium_18);
-        tft.fillRect(10, 175, 245, 35, TFT_BLACK);
-        tft.setCursor(10, 150);
-        tft.println(Itemp, 1); // get iSp temp ,1 decimal place
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.setCursor(130, 150); // was 125,150
-        tft.print("C");
-        tft.setTextFont(1);
-        tft.setCursor(117, 120);
-        tft.print("o");
-      }
-      tft.setFreeFont(&Orbitron_Medium_18);
-      tft.fillRect(10, 175, 245, 35, TFT_BLACK);
-      // iSpindel Angle
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.setCursor(175, 150); // was 165,150
-      // if(Itemp <10){
-      // // change cursor posn +32px if less than 10 to align the display position  LOOKS like superfluous
-      // tft.setCursor(177,150);
-      // }
-      tft.println(angle, 2); // get iSp angle ,2 decimal place
-
-      // Pressure
-      tft.setTextColor(TFT_VIOLET, TFT_BLACK);
-      tft.setCursor(20, 210);
-      // if(pressure <10){
-      // // change cursor posn +32px if less than 10 to align the display position
-      // tft.setCursor(42,210);
-      // }
-      tft.println(Bpressure, 1); // get Pressure ,1 decimal place // ver1.2 changed to Bpressure
-
-      // Present Gravity   from iSpindel SG unadjusted by iSp temperature
-      tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-      if (Plato == true && Temp_Corr == false)
-      {
-        Serial.print("Plato true ");
-        Serial.println(Plato);
-        Serial.print("Temp_Corr false  ");
-        Serial.println(Temp_Corr);
-        float iSpPlato = ((259 - (259 / iSp_sg)));
-        Serial.printf("iSpindel Plato  =  %.1f deg P\n", iSpPlato);
-        tft.fillRect(190, 200, 95, 35, TFT_BLACK);
-        tft.setCursor(145, 210);
-        tft.println(iSpPlato, 1);
-        tft.setCursor(260, 210); // was 240,210
-        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.println("P");
-        tft.setTextFont(1);
-        tft.setCursor(245, 180); // was 225,180
-        tft.println("o");
-      }
-      else if (Plato == false && Temp_Corr == false)
-      {
-        Serial.print("Plato false ");
-        Serial.println(Plato);
-        Serial.print("Temp_Corr false  ");
-        Serial.println(Temp_Corr);
-        Serial.printf("iSpindel SG  =  %.5f deg\n", iSp_sg);
-        tft.setFreeFont(&Orbitron_Medium_18);
-        // tft.fillRect(10,175,245,35,TFT_BLACK);// background for custom font whole screen strip
-        tft.setCursor(145, 210);
-        tft.println(iSp_sg, 4);
-      }
-
-      // Interpolation
-      // https://github.com/RobTillaart/MultiMap
-      if (Temp_Corr == true)
-      {
-        float input[] = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0};
-        float adj_Val[] = {-0.0016, -0.0017, -0.0017, -0.0018, -0.0018, -0.0018, -0.0017, -0.0017, -0.0016, -0.0016, -0.0015, -0.0014, -0.0013, -0.0012, -0.001, -0.0009, -0.0007, -0.0006, -0.0004, -0.0002, 0.0,
-                           0.0002, 0.0004, 0.0007, 0.0009, 0.0012, 0.0014, 0.0017, 0.002, 0.0023, 0.0026, 0.0029, 0.0032, 0.0035, 0.0039, 0.0042, 0.0045, 0.0049, 0.0053, 0.0056, 0.006};
+              // Print the current state (for testing)
+              Debugln("Configuration saved!");
+              //getConfigFromPreferences(); // Call function to retrieve configuration
+              Debug("OK: ");
+              Debugln(OK);
+            }
+          }
+        }  
+        // and DONE to continue also debug print config 
+        if (button11.isClicked(sp)) 
         {
-          SG_adjT = multiMap<float>(Itemp, input, adj_Val, 41);
+          // If the button is touched, initiate debounce logic
+          if ((millis() - lastDebounceTime) > debounceDelay) {
+            // Capture the current time for debounce comparison
+            lastDebounceTime = millis();
+            
+            // Toggle the button state
+            buttonState = !buttonState;
+            
+            // Check if the state has changed
+            if (buttonState != lastButtonState) {
+              lastButtonState = buttonState; // Update the last state
+              // Print the current state (for testing)
+              // Update based on the buttonState
+              DONE = buttonState;
+           
+                      
+              Debugln("Configuration Details");
+              // Update  based on the buttonState
+              getConfigFromPreferences(); // Call function to retrieve configuration
+              Debug("DONE  ");  // debug print
+              Debugln(DONE);
+            }
+        }  
+          
+      }    
+          
+          
+          // Render the buttons based on their current states
+          button1.setPressed(brewF);
+          button1.render(tft);
+          button2.setPressed(FV);
+          button2.render(tft);
+          button3.setPressed(GM);
+          button3.render(tft);
+          button4.setPressed(wmWIPE);
+          button4.render(tft);
+          button5.setPressed(Temp_Corr);
+          button5.render(tft);
+          button6.setPressed(Fahr);
+          button6.render(tft);
+          button7.setPressed(Plato);
+          button7.render(tft);
+          button8.setPressed(Rec);//rec
+          button8.render(tft);
+          button9.setPressed(BF_Poll);
+          button9.render(tft);
+          button10.setPressed(save_OK); // was just OK
+          button10.render(tft);
+          button11.setPressed(DONE);
+          button11.render(tft);
 
-          Serial.print("SG_adjT = ");
-          Serial.println(SG_adjT, 5);
-          delay(10);
+      
 
-          iSp_sga = iSp_sg + SG_adjT;
-
-          debug("Adjusted Gravity = ");
-          Serial.println(iSp_sga, 5);
-          debug("iSp SG Temp correction ");
-          Serial.println(Temp_Corr, 5);
-          debug("Correction : ");
-          Serial.println(SG_adjT, 5);
+      } // end touch and setup
+  
+     
+  } else 
+  { // Now run main program logic
+        
+      // CLOCK   Refresh NTP Time every 1 sec -----------------------------------------------------------------------------
+      // https://github.com/RalphBacon/BB5-Moving-to-a-State-Machine/blob/main/Sketches/3-NonBlocking.ino
+      
+      
+      {
+        static unsigned long NTPMillis = millis();
+        if (millis() - NTPMillis >= 1000) // 1 sec
+        {
+          
+          // tft.fillScreen(TFT_BLACK);   // clear touch screen// test only
+          timeClient.update();
+          sprite.fillSprite(TFT_BLACK);
+          ofr.setFontColor(TFT_SILVER, TFT_BLACK);
+          // tft.fillRect(214, 5, 100, 30,TFT_BLACK);// not needed
+          // ofr.setFontSize(40);//about text 2 // old way
+          // ofr.setCursor(214, 5);//old way
+          // ofr.printf(timeClient.getFormattedTime().c_str()); // old way
+          sprite.drawString(timeClient.getFormattedTime(),2,2,4); // time, x,y,font was = 1 -  2 a bit small 4 bit big but no flicker
+          sprite.pushSprite(200,7); // co-ords for clock was 214,9
+          NTPMillis = millis();     //  reset the local millis variable
         }
       }
 
-      if (Temp_Corr == true && Plato == false)
-      {
-        tft.fillCircle(306, 185, 6, TFT_ORANGE);
+    
 
-        // print adjusted SG
-        tft.setFreeFont(&Orbitron_Medium_18);
-        tft.setCursor(145, 210);
-        tft.fillRect(190, 200, 95, 35, TFT_BLACK); // add blanking box
-        tft.println(iSp_sga, 4);
-        //}
-      }
-
-      // for temperature adjusted Plato
-      if (Temp_Corr == true && Plato == true)
-      {
-        Serial.print("Plato true ");
-        Serial.println(Plato);
-        Serial.print("Temp_Corr true  ");
-        Serial.println(Temp_Corr);
-        tft.fillRect(190, 200, 95, 35, TFT_BLACK);
-        float iSpPlato = ((259 - (259 / iSp_sga))); // adjusted version
-        tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-        tft.setCursor(145, 210);
-        tft.println(iSpPlato, 1);
-        tft.setCursor(260, 210);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.println("P");
-        tft.setTextFont(1);
-        tft.setCursor(245, 180);
-        tft.println("o");
-        tft.fillCircle(306, 185, 6, TFT_ORANGE);
-      }
-      // Message Line
-      // tft.setTextColor(TFT_WHITE,TFT_BLACK);
-      //  swop adjusted SG value for unadjusted value
-      if (Temp_Corr == true)
-      {
-        (iSp_sg = iSp_sga); // use iSp_sga
-        debugln("SG adjusted for iSpindel temperature");
-      }
-      else if (Temp_Corr == false)
-      {
-        debugln("No SG temp adjustment");
-      }
-      // OG
-      tft.setTextFont(1);
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.setCursor(12, 70); //
-      if (Plato == true)
-      {
-        float OGPlato = ((259 - (259 / SGogy)));
-        Serial.printf("Brewfather OG Plato  =  %.1f deg P\n", OGPlato);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.print("OG ");
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.print(OGPlato, 1);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.println(" P");
-        float FGPlato = ((259 - (259 / FGEst)));
-        tft.setCursor(145, 70);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.print("Est. FG ");
-        tft.setTextColor(0xF502, TFT_BLACK);
-        tft.print(FGPlato, 1);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.println(" P");
-      }
-      else if (Plato == false)
-      {
-        Serial.printf("Brewfather OG SG  =  %.5f deg\n", SGogy);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.print("OG ");
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.println(SGogy, 4); // getOG ,4 decimal places
-        tft.setCursor(145, 70);
-        tft.setTextColor(TFT_SILVER, TFT_BLACK);
-        tft.print("Est.FG ");
-        tft.setTextColor(0xF502, TFT_BLACK);
-        tft.println(FGEst, 4);
-      }
-
-      tft.setTextColor(TFT_SILVER, TFT_BLACK);
-      tft.setTextFont(1);
-
-      delay(15000); // 15 sec delay just in case the screen swop timing is a bit close
-
-      client.stop(); // moved down
+    // BPL off not sending/publishing Stale flags
+    unsigned long currentTime = millis();
+    if (currentTime - lastBPLMessageTime > BPLStaleTime) {
+      // No bpl message received within the specified time, set BPLstale to true
+      BPLstale = true;
+      
+    } else {
+      BPLstale = false;
+    }
+    
+    // When FW32 not acting as a Receiver - reconnection logic when not connected to remote broker
+    if ((Rec == false) && (not mqtt_sender.connected())) {
+    mqtt_sender.connect(Target_Broker, PORT, 60);// try keep alive 50 secs increased to 60   
     }
 
-    /* Update the timing for the next event*/
-    previousTime_2 = currentTime;
+ 
+    mqtt_sender.loop();
+
+    // ============= client A bplfw publish - Forwarding ================
+    {
+      static const int interval = 40000;  // publishes every 40s (don't use delay()) Hard coded
+      static uint32_t timer = millis() + interval;
+      //topic2 is bplfw
+    
+      if (millis() > timer)
+      {
+        static int counter = 0;
+        // Serial << "Sender is publishing " << topic_sender.c_str() << endl;
+        timer += interval;// set to 40 secs
+
+        // Debug(state);Debug("   state to be sent by bplfw");//rec
+        // created here so that the data in the json doesn't aggregate over time sending mutiple messages
+        // updated to 384
+        StaticJsonDocument<384> doc;
+        
+        doc["state"] = state;
+        doc["beerTemp"] = beerTemp;
+        doc["beerSet"] = beerSet;
+        doc["fridgeTemp"] = fridgeTemp; 
+        doc["fridgeSet"] = fridgeSet;
+        doc["roomTemp"] = roomTemp;
+        doc["mode"] = mode;   
+        doc["pressure"] = Bpressure;
+        
+        // iSpindel via BrewFather
+        doc["tilt"] = angle; 
+        doc["auxTemp"] = Itemp;
+        doc["gravity"] = iSp_sg;
+        doc["voltage"] = battery;
+        // add identifier of sender
+        doc["sender"] = Sender_IP; // 92 should match the FW32 IP hard coded
+        // FW32 calculated values 
+        doc["AA"]  = App_Att;
+        doc["ABV"] = adjABV; // after correction per uk tax office
+        doc["hydrometerRssi"] = rssi;// rssi = bpl_Data.ispindelRssi  rec "hydrometerRssi"
+        doc["hydrometerName"] = Hydro;
+        // Serialize the JSON document left as string as in loop to send
+        String serializedJson;
+        serializeJson(doc, serializedJson);
+              
+
+        //Rec inhibit sending from receiving own FW32 data
+        if(Rec){
+        Debug("Receiver sending inhibited should be 1 = "); Debugln(Rec);
+        }
+        else{
+        // non JSON mqtt_sender.publish(topic_sender, "sent by Sender, message #"+std::string(String(counter++).c_str()));
+        mqtt_sender.publish(topic2, serializedJson.c_str()); // send it - the bpl plus BF json data 
+        Serial.println("");
+        Serial.println("Forwarding bplfw JSON >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+        Serial.println(serializedJson);//debug
+        }
+      }
+    }
+
+      // Get the current time 
+      unsigned long currentMillis = millis(); 
+      // Check if it's time to switch screens
+      if (currentMillis - previousMillis >= screenInterval) 
+      {
+        previousMillis = currentMillis;
+        
+        // If GM is true, only display screen2
+        if (GM) {
+        screen2();
+        } else {
+        // Change numScreens based on the value of FV ChatGPT Q
+        numScreens = (FV) ? 3 : 2; // If FV is true, numScreens is 3; otherwise, it's 2
+        
+        // Increment the current screen index
+        currentScreen++;
+        if (currentScreen >= numScreens) {
+          currentScreen = 0;
+        }
+        
+        // Switch to the next screen
+        switchScreen(currentScreen); // 
+      
+      }     
+      }
+      // red LED ON if brewF = False
+      if(brewF ==false)
+      {
+            // turn on the RED LED CYD
+            digitalWrite(CYD_LED_BLUE, HIGH);
+            digitalWrite(CYD_LED_RED, LOW);
+            digitalWrite(CYD_LED_GREEN, HIGH);
+      }
+
+      if (brewF == true)
+      { //turned off to save the battery!    
+            digitalWrite(CYD_LED_BLUE, HIGH);
+            digitalWrite(CYD_LED_RED, HIGH);
+            digitalWrite(CYD_LED_GREEN, HIGH); 
+      }
+      if (GM)
+      { // turn ON the GREEN LED CYD
+            digitalWrite(CYD_LED_BLUE, HIGH);
+            digitalWrite(CYD_LED_RED, HIGH);
+            digitalWrite(CYD_LED_GREEN, LOW); 
+      }
+      // BF Update  
+      if (currentTime - previousTime_2 >= eventTime_2_BF) {
+          if(brewF){      // only if selected
+          updateBFData(); // Call the Brewfather logic at the set interval BF_Poll
+          }
+          // printf("iSp_id value in main loop : %s\n", iSp_id); // debug 
+
+          // need a flag if no second batch
+          if (FV){
+          updateBFData2();
+          }
+          if (!brewF){
+          // BPLforscreen2();
+          }
+          previousTime_2 = currentTime; // Update the timing
+       }  
+      
+           
+
   }
-}
+      checkFreeHeap(); // monitor the state of the heap
+} // end LOOP
+
+
+/* // To create purple (mixing red and blue):
+  digitalWrite(CYD_LED_RED, LOW);    // Turn on red
+  digitalWrite(CYD_LED_GREEN, HIGH); // Turn off green
+  digitalWrite(CYD_LED_BLUE, LOW);   // Turn on blue
+  delay(5000);
+  
+  // To create yellow (mixing red and green):
+  digitalWrite(CYD_LED_RED, LOW);    // Turn on red
+  digitalWrite(CYD_LED_GREEN, LOW);  // Turn on green
+  digitalWrite(CYD_LED_BLUE, HIGH);  // Turn off blue
+
+  delay(5000); */
+  
+/*  
+For example, if you want to achieve an intensity of 100 out of 255 (which represents approximately 39% intensity), 
+you'd need to calculate its inverted value within the 0-255 range. In this case:
+Intensity = 100
+Inverted intensity = 255 - Intensity
+Inverted intensity = 255 - 100 = 155
+
+This calculation gives you the value to set for the LED with active low logic to achieve an intensity equivalent to 100 
+in the 0-255 range.
+  */
