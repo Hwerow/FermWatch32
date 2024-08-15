@@ -8,7 +8,7 @@ Monitoring fermentation with Brewfather®, BrewPiLess and iSpindel or "No phone 
 
 The video Tutorial has step-by-step instructions and describes how to make a FermWatch32 with a 2.8" CYD to monitor your fermentation – in the shed, beside the bed, wherever your local network extends!
   
-Link to video:    
+Link to video:    https://youtu.be/qw3vzo-9Bvk
 
 **Important** I am a brewer and author, I write books on brewing traditional beers - **NOT a PROGRAMMER** - as will be obvious from inspection of the code. https://www.lulu.com/spotlight/prsymons 
 # Project
